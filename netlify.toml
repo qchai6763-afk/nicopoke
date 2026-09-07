@@ -1,0 +1,22 @@
+[build]
+  publish = "."
+
+[[redirects]]
+  from = "/style.css"
+  to = "/css/style.css"
+  status = 200
+
+[[redirects]]
+  from = "/store.js"
+  to = "/js/store.js"
+  status = 200
+
+[[redirects]]
+  from = "/data.js"
+  to = "/js/data.js"
+  status = 200
+
+[[redirects]]
+  from = "/main.js"
+  to = "/js/main.js"
+  status = 200
