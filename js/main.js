@@ -95,20 +95,20 @@ function roleLine(user) {
 }
 
 function closedBanner(group) {
-  return `<div class="closed"><b>家族だけ</b> ${escapeHtml(group.name)}　外には公開されません</div>`;
+  return `<div class="closed"><b>グループ</b> ${escapeHtml(group.name)}　参加コードで入れます</div>`;
 }
 
 function statusRow(group, viewerId) {
   const rows = familyStatus(group.id);
-  const youngPosted = rows.filter((r) => r.posted && r.user.generation === "young");
+  const othersPosted = rows.filter((r) => r.posted && r.user.id !== viewerId);
   const waiting = rows.filter((r) => !r.posted);
   const notice =
-    waiting.some((r) => r.user.id === viewerId) && youngPosted.length
-      ? `<div class="notice">${escapeHtml(youngPosted[0].user.name)}（${escapeHtml(
-          youngPosted[0].user.role
-        )}）が先に写真を送りました<small>若い世代のひとコマがきっかけ。あなたの番です。</small></div>`
-      : youngPosted.length && !waiting.some((r) => r.user.id === viewerId)
-        ? `<div class="notice">家族が動き始めました<small>写真を見て、お題を推理すると頭の体操になります。</small></div>`
+    waiting.some((r) => r.user.id === viewerId) && othersPosted.length
+      ? `<div class="notice">${escapeHtml(othersPosted[0].user.name)}（${escapeHtml(
+          othersPosted[0].user.role
+        )}）が先に写真を送りました<small>あなたの番です。</small></div>`
+      : othersPosted.length && !waiting.some((r) => r.user.id === viewerId)
+        ? `<div class="notice">メンバーが動き始めました<small>写真を見て、お題を推理すると頭の体操になります。</small></div>`
         : "";
 
   return `
@@ -192,26 +192,15 @@ function personFields(prefix, defaults = {}) {
     (r) =>
       `<option value="${escapeHtml(r)}" ${defaults.role === r ? "selected" : ""}>${escapeHtml(r)}</option>`
   ).join("");
-  const genOpts = GENERATIONS.map(
-    (g) =>
-      `<option value="${g.id}" ${defaults.generation === g.id || (!defaults.generation && g.id === "adult") ? "selected" : ""}>${escapeHtml(
-        g.label
-      )}</option>`
-  ).join("");
   return `
     <label>名前
       <input class="pill" name="${prefix}-name" maxlength="12" required placeholder="例）はな" value="${escapeHtml(
         defaults.name || ""
       )}" />
     </label>
-    <div class="row2">
-      <label>続柄
-        <select class="pill" name="${prefix}-role">${roleOpts}</select>
-      </label>
-      <label>世代
-        <select class="pill" name="${prefix}-gen">${genOpts}</select>
-      </label>
-    </div>
+    <label>続柄
+      <select class="pill" name="${prefix}-role">${roleOpts}</select>
+    </label>
   `;
 }
 
@@ -220,7 +209,6 @@ function readPerson(form, prefix) {
   return {
     name: data.get(`${prefix}-name`),
     role: data.get(`${prefix}-role`),
-    generation: data.get(`${prefix}-gen`),
   };
 }
 
@@ -232,7 +220,7 @@ function renderLogin() {
     <div class="gate">
       <div class="badge">家族グループ</div>
       <h1>にこぽけ</h1>
-      <p>グループをつくるか、参加コードで入ります。データはこの端末に保存されます。</p>
+      <p>グループをつくるか、参加コードで同じグループに入れます。別のスマホから入るときは、同じ公開ページを開いてください。</p>
       ${err ? `<p class="gate-err">${escapeHtml(err)}</p>` : ""}
       ${
         users.length
@@ -274,10 +262,12 @@ function renderLogin() {
       go("/today");
     });
   });
-  app.querySelector("[data-start]")?.addEventListener("submit", (e) => {
+  app.querySelector("[data-start]")?.addEventListener("submit", async (e) => {
     e.preventDefault();
+    const submit = e.target.querySelector("[type=submit]");
+    if (submit) submit.disabled = true;
     const person = readPerson(e.target, "start");
-    const result = startGroup({
+    const result = await startGroup({
       groupName: new FormData(e.target).get("group"),
       ...person,
     });
@@ -288,10 +278,12 @@ function renderLogin() {
     }
     go("/today");
   });
-  app.querySelector("[data-join]")?.addEventListener("submit", (e) => {
+  app.querySelector("[data-join]")?.addEventListener("submit", async (e) => {
     e.preventDefault();
+    const submit = e.target.querySelector("[type=submit]");
+    if (submit) submit.disabled = true;
     const person = readPerson(e.target, "join");
-    const result = joinWithCode({
+    const result = await joinWithCode({
       code: new FormData(e.target).get("code"),
       ...person,
     });
@@ -667,15 +659,16 @@ function renderMe() {
         <b>${escapeHtml(group.name)}</b>
         <span class="text">参加コード</span>
         <div class="code">${escapeHtml(group.code)}</div>
-        <p class="help">同じスマホのこのアプリから、下のフォームで家族を追加できます。</p>
+        <button class="pill-btn" type="button" data-copy-code>コードをコピー</button>
+        <p class="help">友だちや家族にこのコードを伝えて、ログイン画面の「参加コードで入る」から同じグループに入れます。</p>
       </div>
       <form data-add>
-        <p class="kicker">この端末に家族を追加</p>
+        <p class="kicker">この端末にメンバーを追加</p>
         ${personFields("add")}
         <button class="pill-btn" type="submit">追加する</button>
       </form>
       <p class="kicker">家族から見える記録</p>
-      <p class="help">正解数と連続日数は、同じ家のメンバーにも表示されます。</p>
+      <p class="help">正解数と連続日数は、同じグループのメンバーにも表示されます。</p>
       ${members
         .map((m) => {
           const you = m.id === user.id ? "（あなた）" : "";
@@ -711,6 +704,15 @@ function renderMe() {
     window.__photoPreview = "";
     logout();
     go("/login");
+  });
+  app.querySelector("[data-copy-code]")?.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(group.code);
+      const btn = app.querySelector("[data-copy-code]");
+      if (btn) btn.textContent = "コピーしました";
+    } catch {
+      window.prompt("このコードをコピーしてください", group.code);
+    }
   });
   app.querySelector("[data-add]")?.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -755,3 +757,11 @@ function render() {
 }
 
 render();
+refreshFromCloud().then((changed) => {
+  if (changed) render();
+});
+window.setInterval(() => {
+  refreshFromCloud().then((changed) => {
+    if (changed) render();
+  });
+}, 8000);

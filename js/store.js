@@ -84,6 +84,9 @@ function load() {
     if (!Array.isArray(parsed.comments)) parsed.comments = [];
     if (!Array.isArray(parsed.messages)) parsed.messages = [];
     if (!Array.isArray(parsed.moods)) parsed.moods = [];
+    parsed.users.forEach((u) => {
+      delete u.generation;
+    });
     parsed.quests.forEach((q) => {
       if (!q.category) {
         const found = SLOT_CATS.find((c) => c.items.includes(q.theme));
@@ -117,7 +120,144 @@ function subscribe(listener) {
 
 function notify() {
   persist();
+  const group = currentGroup();
+  if (group) queueCloudSync(group.id);
   window.dispatchEvent(new Event("hidamari-change"));
+}
+
+function normalizeCode(raw) {
+  return String(raw || "")
+    .replace(/[\uFF01-\uFF5E]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/[\s\-ー＿_]/g, "")
+    .toUpperCase();
+}
+
+function findGroupByCode(code) {
+  const c = normalizeCode(code);
+  return state.groups.find((g) => normalizeCode(g.code) === c) || null;
+}
+
+function cloudUrl(code) {
+  return `/.netlify/functions/group?code=${encodeURIComponent(normalizeCode(code))}`;
+}
+
+function stripUser(user) {
+  if (!user) return user;
+  const copy = Object.assign({}, user);
+  delete copy.generation;
+  return copy;
+}
+
+function snapshotForGroup(groupId) {
+  const group = state.groups.find((g) => g.id === groupId);
+  if (!group) return null;
+  const ids = new Set(group.memberIds);
+  const quests = state.quests.filter((q) => q.groupId === groupId);
+  const questIds = new Set(quests.map((q) => q.id));
+  return {
+    group: Object.assign({}, group, { code: normalizeCode(group.code), memberIds: group.memberIds.slice() }),
+    users: state.users.filter((u) => ids.has(u.id)).map(stripUser),
+    memberships: state.memberships.filter((m) => m.groupId === groupId),
+    quests,
+    guesses: state.guesses.filter((g) => questIds.has(g.questId)),
+    comments: state.comments.filter((c) => questIds.has(c.questId)),
+    likes: (state.likes || []).filter((l) => questIds.has(l.questId)),
+  };
+}
+
+function upsertById(list, item) {
+  if (!item || !item.id) return;
+  const i = list.findIndex((x) => x.id === item.id);
+  if (i < 0) list.push(item);
+  else list[i] = item;
+}
+
+function mergeQuest(local, incoming) {
+  if (!local) return incoming;
+  if (!incoming) return local;
+  const localPosted = Boolean(local.photoDataUrl);
+  const incomingPosted = Boolean(incoming.photoDataUrl);
+  if (incomingPosted && !localPosted) return incoming;
+  if (localPosted && !incomingPosted) return local;
+  if ((incoming.postedAt || 0) > (local.postedAt || 0)) return incoming;
+  return local;
+}
+
+function mergeSnapshot(snap) {
+  if (!snap || !snap.group) return false;
+  const before = JSON.stringify(snapshotForGroup(snap.group.id) || {});
+  const incoming = snap.group;
+  incoming.code = normalizeCode(incoming.code);
+  incoming.memberIds = Array.from(new Set(incoming.memberIds || []));
+  const gi = state.groups.findIndex((g) => g.id === incoming.id || normalizeCode(g.code) === incoming.code);
+  if (gi < 0) state.groups.push(incoming);
+  else {
+    const cur = state.groups[gi];
+    cur.name = incoming.name || cur.name;
+    cur.code = incoming.code;
+    cur.id = incoming.id;
+    cur.memberIds = Array.from(new Set((cur.memberIds || []).concat(incoming.memberIds)));
+  }
+  (snap.users || []).forEach((u) => upsertById(state.users, stripUser(u)));
+  (snap.memberships || []).forEach((m) => {
+    if (!m || !m.userId) return;
+    state.memberships = state.memberships.filter((x) => x.userId !== m.userId);
+    state.memberships.push(m);
+  });
+  (snap.quests || []).forEach((q) => {
+    const i = state.quests.findIndex((x) => x.id === q.id);
+    if (i < 0) state.quests.push(q);
+    else state.quests[i] = mergeQuest(state.quests[i], q);
+  });
+  (snap.guesses || []).forEach((g) => upsertById(state.guesses, g));
+  (snap.comments || []).forEach((c) => upsertById(state.comments, c));
+  if (!state.likes) state.likes = [];
+  (snap.likes || []).forEach((l) => upsertById(state.likes, l));
+  const after = JSON.stringify(snapshotForGroup(incoming.id) || {});
+  return before !== after;
+}
+
+async function pullCloud(code) {
+  try {
+    const res = await fetch(cloudUrl(code));
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+async function pushCloud(groupId) {
+  const snap = snapshotForGroup(groupId);
+  if (!snap) return false;
+  try {
+    const res = await fetch(cloudUrl(snap.group.code), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(snap),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+let cloudTimer = 0;
+function queueCloudSync(groupId) {
+  window.clearTimeout(cloudTimer);
+  cloudTimer = window.setTimeout(() => {
+    pushCloud(groupId);
+  }, 400);
+}
+
+async function refreshFromCloud() {
+  const group = currentGroup();
+  if (!group) return false;
+  const remote = await pullCloud(group.code);
+  if (!remote) return false;
+  const changed = mergeSnapshot(remote);
+  if (changed) persist();
+  return changed;
 }
 
 function currentUser() {
@@ -160,7 +300,7 @@ function makeCode() {
   for (let i = 0; i < 6; i += 1) {
     code += chars[Math.floor(Math.random() * chars.length)];
   }
-  if (state.groups.some((g) => g.code === code)) return makeCode();
+  if (state.groups.some((g) => normalizeCode(g.code) === code)) return makeCode();
   return code;
 }
 
@@ -172,60 +312,83 @@ function attachToGroup(userId, groupId) {
   state.memberships.push({ userId, groupId });
 }
 
-function buildUser({ name, role, generation }) {
+function buildUser({ name, role }) {
   const nm = String(name || "").trim().slice(0, 12);
   if (!nm) return null;
-  const gen = GENERATIONS.some((g) => g.id === generation) ? generation : "adult";
   return {
     id: makeId("u"),
     name: nm,
     shortName: nm,
     handle: nm.toLowerCase(),
     role: String(role || "家族").trim().slice(0, 12) || "家族",
-    generation: gen,
     icon: ICONS[state.users.length % ICONS.length],
     photo: "",
     color: USER_COLORS[state.users.length % USER_COLORS.length],
   };
 }
 
-function startGroup({ groupName, name, role, generation }) {
+async function startGroup({ groupName, name, role }) {
   const gname = String(groupName || "").trim().slice(0, 20);
   if (!gname) return { ok: false, error: "グループ名を入れてください" };
-  const user = buildUser({ name, role, generation });
+  const user = buildUser({ name, role });
   if (!user) return { ok: false, error: "あなたの名前を入れてください" };
+  let code = makeCode();
+  for (let i = 0; i < 6; i += 1) {
+    const taken = await pullCloud(code);
+    if (!taken) break;
+    code = makeCode();
+  }
   state.users.push(user);
   const group = {
     id: makeId("g"),
     name: gname,
-    code: makeCode(),
+    code,
     memberIds: [user.id],
   };
   state.groups.push(group);
   state.memberships.push({ userId: user.id, groupId: group.id });
   state.currentUserId = user.id;
+  persist();
+  const uploaded = await pushCloud(group.id);
   notify();
+  if (!uploaded && location.hostname.includes("netlify")) {
+    return { ok: true, group, user, warn: "参加コードの共有保存に失敗しました。もう一度開いてみてください。" };
+  }
   return { ok: true, group, user };
 }
 
-function joinWithCode({ code, name, role, generation }) {
-  const group = state.groups.find(
-    (g) => String(g.code || "").toUpperCase() === String(code || "").trim().toUpperCase()
-  );
-  if (!group) return { ok: false, error: "その参加コードのグループは見つかりませんでした。" };
-  const user = buildUser({ name, role, generation });
+async function joinWithCode({ code, name, role }) {
+  const normalized = normalizeCode(code);
+  if (!normalized) return { ok: false, error: "参加コードを入れてください" };
+  let group = findGroupByCode(normalized);
+  if (!group) {
+    const remote = await pullCloud(normalized);
+    if (remote && remote.group) {
+      mergeSnapshot(remote);
+      group = findGroupByCode(normalized);
+    }
+  }
+  if (!group) {
+    return {
+      ok: false,
+      error: "その参加コードのグループは見つかりませんでした。コードを確かめるか、公開中の同じページから参加してください。",
+    };
+  }
+  const user = buildUser({ name, role });
   if (!user) return { ok: false, error: "あなたの名前を入れてください" };
   state.users.push(user);
   attachToGroup(user.id, group.id);
+  persist();
+  await pushCloud(group.id);
   state.currentUserId = user.id;
   notify();
   return { ok: true, group, user };
 }
 
-function addMemberToCurrentGroup({ name, role, generation }) {
+function addMemberToCurrentGroup({ name, role }) {
   const group = currentGroup();
   if (!group) return { ok: false, error: "グループがありません" };
-  const user = buildUser({ name, role, generation });
+  const user = buildUser({ name, role });
   if (!user) return { ok: false, error: "名前を入れてください" };
   state.users.push(user);
   attachToGroup(user.id, group.id);

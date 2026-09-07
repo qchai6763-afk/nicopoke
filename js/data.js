@@ -50,13 +50,7 @@ const THEMES = SLOT_CATS.flatMap((c) => c.items);
 
 const ICONS = ["🌸", "🌞", "🍀", "☕", "📷", "🌙", "🐶", "🐱", "🍙", "🏠", "🌻", "📚", "🎹", "🚲", "🌊"];
 
-const ROLES = ["孫", "息子", "娘", "父", "母", "祖父", "祖母", "家族"];
-
-const GENERATIONS = [
-  { id: "young", label: "若い世代" },
-  { id: "adult", label: "親世代" },
-  { id: "senior", label: "シニア" },
-];
+const ROLES = ["孫", "息子", "娘", "父", "母", "祖父", "祖母", "家族", "友達"];
 
 const USER_COLORS = ["#ff8a7a", "#7ec8a3", "#ffb347", "#8ecae6", "#c9a0dc", "#ff8fab"];
 
