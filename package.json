@@ -1,0 +1,7 @@
+{
+  "name": "nicopoke",
+  "private": true,
+  "dependencies": {
+    "@netlify/blobs": "^8.10.0"
+  }
+}

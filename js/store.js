@@ -86,6 +86,7 @@ function load() {
     if (!Array.isArray(parsed.moods)) parsed.moods = [];
     parsed.users.forEach((u) => {
       delete u.generation;
+      delete u.role;
     });
     parsed.quests.forEach((q) => {
       if (!q.category) {
@@ -178,9 +179,24 @@ function mergeQuest(local, incoming) {
   const localPosted = Boolean(local.photoDataUrl);
   const incomingPosted = Boolean(incoming.photoDataUrl);
   if (incomingPosted && !localPosted) return incoming;
-  if (localPosted && !incomingPosted) return local;
+  if (localPosted && !incomingPosted) {
+    return Object.assign({}, incoming, {
+      photoDataUrl: local.photoDataUrl,
+      caption: incoming.caption || local.caption,
+      postedAt: incoming.postedAt || local.postedAt,
+      revealed: Boolean(incoming.revealed || local.revealed),
+    });
+  }
   if ((incoming.postedAt || 0) > (local.postedAt || 0)) return incoming;
   return local;
+}
+
+function mergeUser(local, incoming) {
+  if (!local) return incoming;
+  if (!incoming) return local;
+  const out = Object.assign({}, local, incoming);
+  if (!incoming.photo && local.photo) out.photo = local.photo;
+  return out;
 }
 
 function mergeSnapshot(snap) {
@@ -198,7 +214,12 @@ function mergeSnapshot(snap) {
     cur.id = incoming.id;
     cur.memberIds = Array.from(new Set((cur.memberIds || []).concat(incoming.memberIds)));
   }
-  (snap.users || []).forEach((u) => upsertById(state.users, stripUser(u)));
+  (snap.users || []).forEach((u) => {
+    const clean = stripUser(u);
+    const i = state.users.findIndex((x) => x.id === clean.id);
+    if (i < 0) state.users.push(clean);
+    else state.users[i] = mergeUser(state.users[i], clean);
+  });
   (snap.memberships || []).forEach((m) => {
     if (!m || !m.userId) return;
     state.memberships = state.memberships.filter((x) => x.userId !== m.userId);
@@ -217,29 +238,78 @@ function mergeSnapshot(snap) {
   return before !== after;
 }
 
-async function pullCloud(code) {
+function toLightSnapshot(snap) {
+  if (!snap) return null;
+  return {
+    group: snap.group,
+    users: (snap.users || []).map((u) => Object.assign({}, u)),
+    memberships: snap.memberships || [],
+    quests: (snap.quests || []).map((q) =>
+      Object.assign({}, q, {
+        photoDataUrl: "",
+        hasPhoto: Boolean(q.photoDataUrl),
+      })
+    ),
+    guesses: snap.guesses || [],
+    comments: snap.comments || [],
+    likes: snap.likes || [],
+  };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function fetchCloud(code) {
   try {
-    const res = await fetch(cloudUrl(code));
-    if (!res.ok) return null;
-    return await res.json();
+    const res = await fetch(cloudUrl(code), { cache: "no-store" });
+    const text = await res.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = null;
+    }
+    return { status: res.status, ok: res.ok, data };
   } catch {
-    return null;
+    return { status: 0, ok: false, data: null };
+  }
+}
+
+async function pullCloud(code) {
+  const r = await fetchCloud(code);
+  if (r.ok && r.data && r.data.group) return r.data;
+  return null;
+}
+
+async function putCloud(code, body) {
+  try {
+    const res = await fetch(cloudUrl(code), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify(body),
+    });
+    if (res.status === 404 || res.status === 405 || res.status === 501) {
+      return { ok: false, stop: true };
+    }
+    return { ok: res.ok, stop: false };
+  } catch {
+    return { ok: false, stop: true };
   }
 }
 
 async function pushCloud(groupId) {
   const snap = snapshotForGroup(groupId);
   if (!snap) return false;
-  try {
-    const res = await fetch(cloudUrl(snap.group.code), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(snap),
-    });
-    return res.ok;
-  } catch {
-    return false;
+  for (let i = 0; i < 3; i += 1) {
+    const result = await putCloud(snap.group.code, snap);
+    if (result.ok) return true;
+    if (result.stop) break;
+    await sleep(350 * (i + 1));
   }
+  const light = await putCloud(snap.group.code, toLightSnapshot(snap));
+  return Boolean(light.ok);
 }
 
 let cloudTimer = 0;
@@ -312,7 +382,7 @@ function attachToGroup(userId, groupId) {
   state.memberships.push({ userId, groupId });
 }
 
-function buildUser({ name, role }) {
+function buildUser({ name }) {
   const nm = String(name || "").trim().slice(0, 12);
   if (!nm) return null;
   return {
@@ -320,23 +390,41 @@ function buildUser({ name, role }) {
     name: nm,
     shortName: nm,
     handle: nm.toLowerCase(),
-    role: String(role || "家族").trim().slice(0, 12) || "家族",
     icon: ICONS[state.users.length % ICONS.length],
     photo: "",
     color: USER_COLORS[state.users.length % USER_COLORS.length],
   };
 }
 
-async function startGroup({ groupName, name, role }) {
+function joinErrorFromCloud(remote) {
+  if (remote.status === 0) {
+    return "つながりの確認ができませんでした。グループを作ったときと【同じ公開ページ】を開き、通信を確かめてください。";
+  }
+  if (remote.status === 501 || remote.status >= 500) {
+    return "グループの共有サーバーに接続できません。Netlifyに公開されているか、少し待ってからもう一度試してください。";
+  }
+  if (remote.status === 400) {
+    return "参加コードの形式が正しくありません。4〜8文字の英数字か確かめてください。";
+  }
+  if (remote.status === 404) {
+    return "その参加コードのグループは見つかりませんでした。コードと、グループを作ったときと同じページのアドレスかを確かめてください。";
+  }
+  return `グループを探せませんでした（エラー ${remote.status}）。同じ公開ページから参加してください。`;
+}
+
+async function startGroup({ groupName, name }) {
   const gname = String(groupName || "").trim().slice(0, 20);
   if (!gname) return { ok: false, error: "グループ名を入れてください" };
-  const user = buildUser({ name, role });
+  const user = buildUser({ name });
   if (!user) return { ok: false, error: "あなたの名前を入れてください" };
   let code = makeCode();
-  for (let i = 0; i < 6; i += 1) {
-    const taken = await pullCloud(code);
-    if (!taken) break;
-    code = makeCode();
+  for (let i = 0; i < 8; i += 1) {
+    const remote = await fetchCloud(code);
+    if (remote.ok && remote.data?.group) {
+      code = makeCode();
+      continue;
+    }
+    break;
   }
   state.users.push(user);
   const group = {
@@ -351,44 +439,54 @@ async function startGroup({ groupName, name, role }) {
   persist();
   const uploaded = await pushCloud(group.id);
   notify();
-  if (!uploaded && location.hostname.includes("netlify")) {
-    return { ok: true, group, user, warn: "参加コードの共有保存に失敗しました。もう一度開いてみてください。" };
+  if (!uploaded) {
+    return {
+      ok: true,
+      group,
+      user,
+      warn: "この端末には保存できました。ただし他のスマホからはまだ入れません。Netlifyなど同じ公開URLで開き直してください。",
+    };
   }
   return { ok: true, group, user };
 }
 
-async function joinWithCode({ code, name, role }) {
+async function joinWithCode({ code, name }) {
   const normalized = normalizeCode(code);
   if (!normalized) return { ok: false, error: "参加コードを入れてください" };
+  if (!/^[A-Z2-9]{4,8}$/.test(normalized)) {
+    return { ok: false, error: "参加コードは4〜8文字の英数字です" };
+  }
+  const remote = await fetchCloud(normalized);
+  if (remote.ok && remote.data && remote.data.group) {
+    mergeSnapshot(remote.data);
+  }
   let group = findGroupByCode(normalized);
   if (!group) {
-    const remote = await pullCloud(normalized);
-    if (remote && remote.group) {
-      mergeSnapshot(remote);
-      group = findGroupByCode(normalized);
-    }
+    return { ok: false, error: joinErrorFromCloud(remote) };
   }
-  if (!group) {
-    return {
-      ok: false,
-      error: "その参加コードのグループは見つかりませんでした。コードを確かめるか、公開中の同じページから参加してください。",
-    };
-  }
-  const user = buildUser({ name, role });
+  const user = buildUser({ name });
   if (!user) return { ok: false, error: "あなたの名前を入れてください" };
   state.users.push(user);
   attachToGroup(user.id, group.id);
   persist();
-  await pushCloud(group.id);
+  const uploaded = await pushCloud(group.id);
   state.currentUserId = user.id;
   notify();
+  if (!uploaded) {
+    return {
+      ok: true,
+      group,
+      user,
+      warn: "参加はできましたが、共有保存に失敗しました。同じ公開ページでもう一度開いてみてください。",
+    };
+  }
   return { ok: true, group, user };
 }
 
-function addMemberToCurrentGroup({ name, role }) {
+function addMemberToCurrentGroup({ name }) {
   const group = currentGroup();
   if (!group) return { ok: false, error: "グループがありません" };
-  const user = buildUser({ name, role });
+  const user = buildUser({ name });
   if (!user) return { ok: false, error: "名前を入れてください" };
   state.users.push(user);
   attachToGroup(user.id, group.id);
