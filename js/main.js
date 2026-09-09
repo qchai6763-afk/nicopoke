@@ -37,48 +37,97 @@ function avatarMark(user, extraClass = "") {
 }
 
 function compressPhoto(file, done) {
+  const max = 720;
+  const quality = 0.7;
+  const finish = (img) => {
+    let w = img.width;
+    let h = img.height;
+    if (!w || !h) {
+      window.alert("この画像は使えません。別の写真を選んでください。");
+      return;
+    }
+    if (Math.max(w, h) > max) {
+      const s = max / Math.max(w, h);
+      w = Math.round(w * s);
+      h = Math.round(h * s);
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+    done(canvas.toDataURL("image/jpeg", quality));
+  };
+  if (typeof createImageBitmap === "function") {
+    createImageBitmap(file)
+      .then(finish)
+      .catch(() => readPhotoFile(file, finish));
+    return;
+  }
+  readPhotoFile(file, finish);
+}
+
+function readPhotoFile(file, finish) {
   const reader = new FileReader();
+  reader.onerror = () => window.alert("写真を読み込めませんでした。");
   reader.onload = () => {
     const img = new Image();
-    img.onload = () => {
-      const max = 1000;
-      let w = img.width;
-      let h = img.height;
-      if (Math.max(w, h) > max) {
-        const s = max / Math.max(w, h);
-        w = Math.round(w * s);
-        h = Math.round(h * s);
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-      done(canvas.toDataURL("image/jpeg", 0.78));
-    };
+    img.onload = () => finish(img);
+    img.onerror = () => window.alert("この画像は使えません。JPEGやPNGを選んでください。");
     img.src = reader.result;
   };
   reader.readAsDataURL(file);
 }
 
 function cropToSquare(file, done) {
-  const reader = new FileReader();
-  reader.onload = () => {
-    const img = new Image();
-    img.onload = () => {
-      const size = 280;
-      const canvas = document.createElement("canvas");
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext("2d");
-      const min = Math.min(img.width, img.height);
-      const sx = (img.width - min) / 2;
-      const sy = (img.height - min) / 2;
-      ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size);
-      done(canvas.toDataURL("image/jpeg", 0.82));
-    };
-    img.src = reader.result;
+  const finish = (img) => {
+    if (!img.width || !img.height) {
+      window.alert("この画像は使えません。別の写真を選んでください。");
+      return;
+    }
+    const size = 280;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    const min = Math.min(img.width, img.height);
+    const sx = (img.width - min) / 2;
+    const sy = (img.height - min) / 2;
+    ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size);
+    done(canvas.toDataURL("image/jpeg", 0.82));
   };
-  reader.readAsDataURL(file);
+  if (typeof createImageBitmap === "function") {
+    createImageBitmap(file)
+      .then(finish)
+      .catch(() => readPhotoFile(file, finish));
+    return;
+  }
+  readPhotoFile(file, finish);
+}
+
+function bindFileInputs(root, onFile) {
+  root.querySelectorAll('input[type="file"]').forEach((input) => {
+    input.addEventListener("change", () => {
+      const file = input.files?.[0];
+      input.value = "";
+      if (!file) return;
+      onFile(file);
+    });
+  });
+}
+
+function photoPickHtml(kind) {
+  const cam = kind === "icon" ? "user" : "environment";
+  return `
+    <div class="photo-picks">
+      <label class="pick-photo">
+        フォルダーから選ぶ
+        <input type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.heic,.heif" />
+      </label>
+      <label class="pick-photo alt">
+        カメラで撮る
+        <input type="file" accept="image/*" capture="${cam}" />
+      </label>
+    </div>`;
 }
 
 function ago(ts) {
@@ -90,25 +139,15 @@ function ago(ts) {
   return `${Math.round(h / 24)}日前`;
 }
 
-function roleLine(user) {
-  return user.role || "家族";
-}
-
-function closedBanner(group) {
-  return `<div class="closed"><b>グループ</b> ${escapeHtml(group.name)}　参加コードで入れます</div>`;
-}
-
 function statusRow(group, viewerId) {
   const rows = familyStatus(group.id);
   const othersPosted = rows.filter((r) => r.posted && r.user.id !== viewerId);
   const waiting = rows.filter((r) => !r.posted);
   const notice =
     waiting.some((r) => r.user.id === viewerId) && othersPosted.length
-      ? `<div class="notice">${escapeHtml(othersPosted[0].user.name)}（${escapeHtml(
-          othersPosted[0].user.role
-        )}）が先に写真を送りました<small>あなたの番です。</small></div>`
+      ? `<div class="notice">${escapeHtml(othersPosted[0].user.name)}さんが先に写真を送りました<small>あなたの番です。</small></div>`
       : othersPosted.length && !waiting.some((r) => r.user.id === viewerId)
-        ? `<div class="notice">メンバーが動き始めました<small>写真を見て、お題を推理すると頭の体操になります。</small></div>`
+        ? `<div class="notice">みんなの写真が届いています<small>見て、お題を推理してみましょう。</small></div>`
         : "";
 
   return `
@@ -118,10 +157,9 @@ function statusRow(group, viewerId) {
         .map((r) => {
           const you = r.user.id === viewerId ? "（あなた）" : "";
           return `<div class="st ${r.posted ? "on" : ""}">
-            <div class="dot"></div>
+            ${avatarMark(r.user, "sm")}
             <b>${escapeHtml(r.user.shortName)}${you}</b>
             <span>${r.posted ? "投稿済み" : "まだ"}</span>
-            <span>${r.streak ? `🔥${r.streak}日` : "連続なし"} · 正解${r.score}</span>
           </div>`;
         })
         .join("")}
@@ -142,9 +180,9 @@ function chrome(inner, active) {
           <div class="mascot" aria-hidden="true"></div>
           <div>
             <div class="logo">にこぽけ</div>
-            <p class="family-name">${group ? escapeHtml(group.name) : "家族グループ"} · ${escapeHtml(
+            <p class="family-name">${group ? escapeHtml(group.name) : "グループ"} · ${escapeHtml(
               user.shortName
-            )}（${escapeHtml(user.role || "家族")}）</p>
+            )}</p>
           </div>
         </div>
         <div class="top-actions">
@@ -152,7 +190,11 @@ function chrome(inner, active) {
           <a href="#/me" class="avatar-link">${avatarMark(user)}</a>
         </div>
       </header>
-      <main class="screen">${inner}</main>
+      <main class="screen">${
+        window.__gateWarn
+          ? `<div class="notice">${escapeHtml(window.__gateWarn)}</div>`
+          : ""
+      }${inner}</main>
       <nav class="tabbar">
         <a href="#/today" class="${active === "today" ? "active" : ""}">${ICO.cam}<span>今日のお題</span></a>
         <a href="#/feed" class="${active === "feed" ? "active" : ""}">${ICO.grid}<span>家族の写真</span></a>
@@ -188,18 +230,11 @@ function bindTop() {
 }
 
 function personFields(prefix, defaults = {}) {
-  const roleOpts = ROLES.map(
-    (r) =>
-      `<option value="${escapeHtml(r)}" ${defaults.role === r ? "selected" : ""}>${escapeHtml(r)}</option>`
-  ).join("");
   return `
     <label>名前
       <input class="pill" name="${prefix}-name" maxlength="12" required placeholder="例）はな" value="${escapeHtml(
         defaults.name || ""
       )}" />
-    </label>
-    <label>続柄
-      <select class="pill" name="${prefix}-role">${roleOpts}</select>
     </label>
   `;
 }
@@ -208,52 +243,60 @@ function readPerson(form, prefix) {
   const data = new FormData(form);
   return {
     name: data.get(`${prefix}-name`),
-    role: data.get(`${prefix}-role`),
   };
 }
 
 function renderLogin() {
   const { users } = getState();
   const err = window.__gateError || "";
+  const warn = window.__gateWarn || "";
   window.__gateError = "";
+  window.__gateWarn = "";
   app.innerHTML = `
     <div class="gate">
-      <div class="badge">家族グループ</div>
-      <h1>にこぽけ</h1>
-      <p>グループをつくるか、参加コードで同じグループに入れます。別のスマホから入るときは、同じ公開ページを開いてください。</p>
+      <div class="badge">にこぽけ</div>
+      <h1>今日の一枚を、<br />みんなで。</h1>
+      <p>用意されたお題に合わせて写真を送ります。参加コードで、別のスマホからも同じグループに入れます。</p>
       ${err ? `<p class="gate-err">${escapeHtml(err)}</p>` : ""}
+      ${warn ? `<p class="gate-warn">${escapeHtml(warn)}</p>` : ""}
       ${
         users.length
-          ? `<p class="kicker">この端末のアカウント</p>
+          ? `<div class="gate-card">
+             <p class="kicker">この端末のアカウント</p>
              <div class="people">
                ${users
                  .map(
                    (u) => `
                  <button type="button" data-login="${u.id}">
                    ${avatarMark(u)}
-                   <span><b>${escapeHtml(u.name)}</b><span class="sub">${escapeHtml(roleLine(u))}</span></span>
+                   <span><b>${escapeHtml(u.name)}</b></span>
                  </button>`
                  )
                  .join("")}
-             </div>`
+             </div>
+           </div>`
           : ""
       }
-      <p class="kicker" style="margin-top:22px">グループをつくる</p>
-      <form data-start>
-        <label>グループ名
-          <input class="pill" name="group" maxlength="20" required placeholder="例）たなか家" />
-        </label>
-        ${personFields("start")}
-        <button class="primary" type="submit">つくる</button>
-      </form>
-      <p class="kicker" style="margin-top:18px">参加コードで入る</p>
-      <form data-join>
-        <label>参加コード
-          <input class="pill code-in" name="code" maxlength="8" required placeholder="6文字" />
-        </label>
-        ${personFields("join")}
-        <button class="ghost" type="submit">参加する</button>
-      </form>
+      <div class="gate-card">
+        <p class="kicker">グループをつくる</p>
+        <form data-start>
+          <label>グループ名
+            <input class="pill" name="group" maxlength="20" required placeholder="例）たなか家" />
+          </label>
+          ${personFields("start")}
+          <button class="primary" type="submit">つくる</button>
+        </form>
+      </div>
+      <div class="gate-card">
+        <p class="kicker">参加コードで入る</p>
+        <form data-join>
+          <label>参加コード
+            <input class="pill code-in" name="code" maxlength="8" required placeholder="6文字" autocomplete="off" />
+          </label>
+          ${personFields("join")}
+          <button class="ghost" type="submit">参加する</button>
+        </form>
+      </div>
     </div>
   `;
   app.querySelectorAll("[data-login]").forEach((btn) => {
@@ -265,7 +308,10 @@ function renderLogin() {
   app.querySelector("[data-start]")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const submit = e.target.querySelector("[type=submit]");
-    if (submit) submit.disabled = true;
+    if (submit) {
+      submit.disabled = true;
+      submit.textContent = "保存しています…";
+    }
     const person = readPerson(e.target, "start");
     const result = await startGroup({
       groupName: new FormData(e.target).get("group"),
@@ -276,12 +322,16 @@ function renderLogin() {
       renderLogin();
       return;
     }
+    if (result.warn) window.__gateWarn = result.warn;
     go("/today");
   });
   app.querySelector("[data-join]")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     const submit = e.target.querySelector("[type=submit]");
-    if (submit) submit.disabled = true;
+    if (submit) {
+      submit.disabled = true;
+      submit.textContent = "探しています…";
+    }
     const person = readPerson(e.target, "join");
     const result = await joinWithCode({
       code: new FormData(e.target).get("code"),
@@ -292,6 +342,7 @@ function renderLogin() {
       renderLogin();
       return;
     }
+    if (result.warn) window.__gateWarn = result.warn;
     go("/today");
   });
 }
@@ -316,52 +367,58 @@ function renderToday() {
     ? ""
     : `<div class="theme-edit">
          <div class="cat-chip">${quest.categoryEmoji || "🎲"} ${escapeHtml(quest.categoryLabel || "お題")}</div>
-         <p class="lefts">スロット残り ${rerollsLeft(quest)} / ${MAX_REROLLS} 回</p>
+         <p class="lefts">別のお題にできる回数　残り ${rerollsLeft(quest)} / ${MAX_REROLLS} 回</p>
          <button class="reroll" type="button" data-reroll ${rerollsLeft(quest) ? "" : "disabled"}>
-           別のお題にする
+           用意されたお題を引き直す
          </button>
-         <b>自分で書く</b>
-         <form data-theme>
-           <input class="pill" name="theme" value="${escapeHtml(quest.theme)}" maxlength="24" />
-           <div class="row2">
-             <button class="pill-btn" type="submit">このお題にする</button>
-           </div>
-         </form>
+         <details class="theme-pick" ${window.__showThemes ? "open" : ""}>
+           <summary>一覧から選ぶ</summary>
+           ${SLOT_CATS.map(
+             (cat) => `
+               <p class="kicker">${cat.emoji} ${escapeHtml(cat.label)}</p>
+               <div class="chips">
+                 ${cat.items
+                   .map(
+                     (t) =>
+                       `<button class="chip ${t === quest.theme ? "on" : ""}" type="button" data-set-theme="${escapeHtml(
+                         t
+                       )}">${escapeHtml(t)}</button>`
+                   )
+                   .join("")}
+               </div>`
+           ).join("")}
+         </details>
        </div>`;
 
   const preview = window.__photoPreview;
   const stage = posted
     ? `<div class="stage">
          <img src="${quest.photoDataUrl}" alt="" />
-         <div class="done-chip">家族に送りました</div>
+         <div class="done-chip">送りました</div>
        </div>
        ${
          quest.revealed
-           ? `<p class="text">お題は家族に公開されています</p>`
-           : `<button class="ghost" data-reveal type="button">お題を家族に教える</button>`
+           ? `<p class="text">お題はみんなに公開されています</p>`
+           : `<button class="ghost" data-reveal type="button">お題を教える</button>`
        }
-       <a class="primary" href="#/feed">家族の写真を見る</a>`
+       <a class="primary" href="#/feed">みんなの写真を見る</a>`
     : preview
       ? `<div class="stage"><img src="${preview}" alt="プレビュー" /></div>
          <div class="preview-actions">
            <button class="primary" type="button" data-confirm>この写真で送る</button>
            <button class="ghost" type="button" data-clear-preview>選びなおす</button>
          </div>`
-      : `<label class="pick-photo">
-           📷 カメラで撮る／アルバムから選ぶ
-           <input type="file" accept="image/*" capture="environment" />
-         </label>
-         <p class="help">選んだ写真は、ここで確認してから送れます。</p>`;
+      : `${photoPickHtml("quest")}
+         <p class="help">スマホやパソコンに保存してある写真フォルダーからも選べます。</p>`;
 
   app.innerHTML = chrome(
     `
-      ${closedBanner(group)}
       ${statusRow(group, user.id)}
       ${riskNote}
       <div class="streak ${streak ? "pulse" : ""}">${escapeHtml(streakLabel(streak))}</div>
       <p class="kicker">${formatDateLabel(todayKey())}　あなただけが見えるお題</p>
       <h1 class="theme">${escapeHtml(quest.theme)}</h1>
-      <p class="help">家族には、写真を出すまでお題は秘密です。</p>
+      <p class="help">写真を出すまで、お題は秘密です。</p>
       ${editor}
       ${stage}
     `,
@@ -370,17 +427,12 @@ function renderToday() {
 
   bindTop();
 
-  const input = app.querySelector('input[type="file"]');
-  if (input) {
-    input.addEventListener("change", () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      compressPhoto(file, (url) => {
-        window.__photoPreview = url;
-        render();
-      });
+  bindFileInputs(app, (file) => {
+    compressPhoto(file, (url) => {
+      window.__photoPreview = url;
+      render();
     });
-  }
+  });
   app.querySelector("[data-confirm]")?.addEventListener("click", () => {
     if (!window.__photoPreview) return;
     postPhoto(quest.id, { photoDataUrl: window.__photoPreview, caption: "" });
@@ -392,9 +444,11 @@ function renderToday() {
     render();
   });
   app.querySelector("[data-reveal]")?.addEventListener("click", () => revealTheme(quest.id));
-  app.querySelector("[data-theme]")?.addEventListener("submit", (e) => {
-    e.preventDefault();
-    setQuestTheme(quest.id, new FormData(e.target).get("theme"));
+  app.querySelector("details.theme-pick")?.addEventListener("toggle", (e) => {
+    window.__showThemes = e.target.open;
+  });
+  app.querySelectorAll("[data-set-theme]").forEach((btn) => {
+    btn.addEventListener("click", () => setQuestTheme(quest.id, btn.dataset.setTheme));
   });
   app.querySelector("[data-reroll]")?.addEventListener("click", () => rerollQuest(quest.id));
 }
@@ -450,7 +504,7 @@ function postCard(quest, viewerId) {
 
   const revealUi =
     mine && posted && !quest.revealed
-      ? `<button class="ghost" data-reveal="${quest.id}" type="button">お題を家族に教える</button>`
+      ? `<button class="ghost" data-reveal="${quest.id}" type="button">お題を教える</button>`
       : "";
 
   const waitCopy = !posted
@@ -461,9 +515,9 @@ function postCard(quest, viewerId) {
     <article class="post">
       <div class="post-head">
         ${avatarMark(who)}
-        <div><b>${escapeHtml(who.name)}</b><small>${escapeHtml(quest.categoryEmoji || "")} ${escapeHtml(
-          who.role || "家族"
-        )}　${posted ? ago(quest.postedAt) : "waiting"}</small></div>
+        <div><b>${escapeHtml(who.name)}</b><small>${escapeHtml(quest.categoryEmoji || "")} ${
+          posted ? ago(quest.postedAt) : "まだ"
+        }</small></div>
       </div>
       <div class="frame">${media}</div>
       ${waitCopy}
@@ -543,7 +597,6 @@ function renderFeed() {
   if (!unlocked) {
     app.innerHTML = chrome(
       `
-      ${closedBanner(group)}
       ${statusRow(group, user.id)}
       ${
         streakAtRisk(user.id)
@@ -552,9 +605,9 @@ function renderFeed() {
       }
       <div class="lockbox">
          <div class="lockico">🔒</div>
-         <h2>家族の写真はまだ鍵</h2>
-         <p>自分が今日の一枚を送ると開きます。<br />先に動いた家族のあとについていけます。</p>
-         <a class="primary" href="#/today">今日のお題を撮る</a>
+         <h2>みんなの写真はまだ鍵</h2>
+         <p>自分が今日の一枚を送ると開きます。</p>
+         <a class="primary" href="#/today">今日のお題へ</a>
        </div>`,
       "feed"
     );
@@ -572,7 +625,6 @@ function renderFeed() {
 
   app.innerHTML = chrome(
     `
-      ${closedBanner(group)}
       ${statusRow(group, user.id)}
       ${
         top
@@ -614,17 +666,13 @@ function renderMe() {
 
   app.innerHTML = chrome(
     `
-      ${closedBanner(group)}
       <div class="hero-me">
         ${avatarMark(user, "xl")}
-        <label class="cam-icon">
-          写真でアイコン
-          <input type="file" accept="image/*" capture="user" hidden />
-        </label>
+        ${photoPickHtml("icon")}
+        <p class="help">保存してある写真からも、カメラからも設定できます。丸く切り抜かれます。</p>
       </div>
-      <div>
+      <div class="me-name">
         <b>${escapeHtml(user.name)}</b>
-        <small class="text">${escapeHtml(roleLine(user))}</small>
       </div>
       <div class="streak pulse">${escapeHtml(streakLabel(mineStreak))}</div>
       ${
@@ -647,7 +695,7 @@ function renderMe() {
         </div>
       </form>
       <p class="kicker" style="margin-top:18px">アイコン</p>
-      <p class="help">カメラで撮るか、絵文字を選んでください。丸く切り抜かれます。</p>
+      <p class="help">絵文字を選ぶか、上のボタンで写真を設定してください。</p>
       <div class="icons">
         ${ICONS.map(
           (ic) =>
@@ -660,7 +708,7 @@ function renderMe() {
         <span class="text">参加コード</span>
         <div class="code">${escapeHtml(group.code)}</div>
         <button class="pill-btn" type="button" data-copy-code>コードをコピー</button>
-        <p class="help">友だちや家族にこのコードを伝えて、ログイン画面の「参加コードで入る」から同じグループに入れます。</p>
+        <p class="help">このコードを伝えて、ログイン画面の「参加コードで入る」から同じグループに入れます。必ず【同じ公開ページ】を開いてください。</p>
       </div>
       <form data-add>
         <p class="kicker">この端末にメンバーを追加</p>
@@ -674,7 +722,7 @@ function renderMe() {
           const you = m.id === user.id ? "（あなた）" : "";
           return `<div class="member">
             ${avatarMark(m)}
-            <div><b>${escapeHtml(m.name)}${you}</b><small>${escapeHtml(m.role || "家族")}</small></div>
+            <div><b>${escapeHtml(m.name)}${you}</b></div>
             <div class="nums">🔥 ${streakFor(m.id)}日<br />正解 ${correctCount(m.id)}<br />❤️ ${likesReceived(
               m.id
             )}</div>
@@ -726,10 +774,7 @@ function renderMe() {
   app.querySelectorAll("[data-icon]").forEach((btn) => {
     btn.addEventListener("click", () => updateProfile({ icon: btn.dataset.icon }));
   });
-  const file = app.querySelector(".cam-icon input");
-  file?.addEventListener("change", () => {
-    const f = file.files?.[0];
-    if (!f) return;
+  bindFileInputs(app.querySelector(".hero-me") || app, (f) => {
     cropToSquare(f, (photo) => updateProfile({ photo }));
   });
 }
@@ -765,3 +810,9 @@ window.setInterval(() => {
     if (changed) render();
   });
 }, 8000);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  refreshFromCloud().then((changed) => {
+    if (changed) render();
+  });
+});
