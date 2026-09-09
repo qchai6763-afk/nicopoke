@@ -1,3 +1,5 @@
+/api/group    /.netlify/functions/group    200
+/api/group/*  /.netlify/functions/group/:splat    200
 /style.css    /css/style.css    200
 /store.js     /js/store.js      200
 /data.js      /js/data.js       200

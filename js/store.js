@@ -128,8 +128,9 @@ function notify() {
 
 function normalizeCode(raw) {
   return String(raw || "")
+    .trim()
     .replace(/[\uFF01-\uFF5E]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
-    .replace(/[\s\-ー＿_]/g, "")
+    .replace(/[\s\u3000\-ー＿_]/g, "")
     .toUpperCase();
 }
 
@@ -138,8 +139,74 @@ function findGroupByCode(code) {
   return state.groups.find((g) => normalizeCode(g.code) === c) || null;
 }
 
-function cloudUrl(code) {
-  return `/.netlify/functions/group?code=${encodeURIComponent(normalizeCode(code))}`;
+function cloudPaths(code) {
+  const c = encodeURIComponent(normalizeCode(code));
+  return [`/.netlify/functions/group?code=${c}`];
+}
+
+function parseCloudBody(text) {
+  if (!text) return null;
+  const trimmed = String(text).trim();
+  if (!trimmed || trimmed[0] === "<") return null;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+function isGroupPayload(data) {
+  return Boolean(data && data.group && data.group.id);
+}
+
+async function requestCloud(path, options) {
+  try {
+    const headers = Object.assign(
+      { Accept: "application/json" },
+      (options && options.headers) || {}
+    );
+    const res = await fetch(path, Object.assign({ cache: "no-store" }, options, { headers }));
+    const text = await res.text();
+    return { status: res.status, ok: res.ok, data: parseCloudBody(text) };
+  } catch {
+    return { status: 0, ok: false, data: null };
+  }
+}
+
+async function fetchCloud(code) {
+  const n = normalizeCode(code);
+  const path = cloudPaths(n)[0];
+  const last = await requestCloud(path, { headers: { "X-Join-Code": n } });
+  return last;
+}
+
+async function pullCloud(code) {
+  const r = await fetchCloud(code);
+  if (r.ok && isGroupPayload(r.data)) return r.data;
+  return null;
+}
+
+async function putCloud(code, body) {
+  const n = normalizeCode(code);
+  if (body && body.group) body.group.code = n;
+  const payload = JSON.stringify(body);
+  const path = cloudPaths(n)[0];
+  let last = { ok: false, stop: true, data: null, status: 0 };
+  for (const method of ["POST", "PUT"]) {
+    const res = await requestCloud(path, {
+      method,
+      headers: { "Content-Type": "application/json", "X-Join-Code": n },
+      body: payload,
+    });
+    last = res;
+    if (res.ok && res.data && (res.data.stored || isGroupPayload(res.data))) {
+      return { ok: true, stop: false, data: res.data };
+    }
+    if (res.data && res.data.errorCode === "SAVE_FAILED") {
+      return { ok: false, stop: true, data: res.data, status: res.status };
+    }
+  }
+  return { ok: false, stop: true, data: last.data, status: last.status };
 }
 
 function stripUser(user) {
@@ -260,45 +327,6 @@ function sleep(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-async function fetchCloud(code) {
-  try {
-    const res = await fetch(cloudUrl(code), { cache: "no-store" });
-    const text = await res.text();
-    let data = null;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      data = null;
-    }
-    return { status: res.status, ok: res.ok, data };
-  } catch {
-    return { status: 0, ok: false, data: null };
-  }
-}
-
-async function pullCloud(code) {
-  const r = await fetchCloud(code);
-  if (r.ok && r.data && r.data.group) return r.data;
-  return null;
-}
-
-async function putCloud(code, body) {
-  try {
-    const res = await fetch(cloudUrl(code), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      cache: "no-store",
-      body: JSON.stringify(body),
-    });
-    if (res.status === 404 || res.status === 405 || res.status === 501) {
-      return { ok: false, stop: true };
-    }
-    return { ok: res.ok, stop: false };
-  } catch {
-    return { ok: false, stop: true };
-  }
-}
-
 async function pushCloud(groupId) {
   const snap = snapshotForGroup(groupId);
   if (!snap) return false;
@@ -397,19 +425,23 @@ function buildUser({ name }) {
 }
 
 function joinErrorFromCloud(remote) {
-  if (remote.status === 0) {
-    return "つながりの確認ができませんでした。グループを作ったときと【同じ公開ページ】を開き、通信を確かめてください。";
+  const errorCode = remote && remote.data && remote.data.errorCode;
+  if (errorCode === "NOT_FOUND" || remote.status === 404) {
+    return "その参加コードのグループは見つかりませんでした。同じ公開ページでグループを作ったあと、表示された参加コードを入力してください。";
   }
-  if (remote.status === 501 || remote.status >= 500) {
-    return "グループの共有サーバーに接続できません。Netlifyに公開されているか、少し待ってからもう一度試してください。";
+  if (errorCode === "STORE_UNAVAILABLE" || errorCode === "SAVE_FAILED" || remote.status === 501) {
+    return "グループの共有サーバーに接続できません。Netlifyの公開ページから操作してください。";
   }
-  if (remote.status === 400) {
+  if (errorCode === "BAD_CODE" || remote.status === 400) {
     return "参加コードの形式が正しくありません。4〜8文字の英数字か確かめてください。";
   }
-  if (remote.status === 404) {
-    return "その参加コードのグループは見つかりませんでした。コードと、グループを作ったときと同じページのアドレスかを確かめてください。";
+  if (remote.status === 0) {
+    return "つながりの確認ができませんでした。グループを作ったときと【同じ公開ページ】を開いてください。";
   }
-  return `グループを探せませんでした（エラー ${remote.status}）。同じ公開ページから参加してください。`;
+  if (remote.status >= 500) {
+    return "グループの共有サーバーに接続できません。少し待ってからもう一度試してください。";
+  }
+  return "グループを探せませんでした。同じ公開ページから参加してください。";
 }
 
 async function startGroup({ groupName, name }) {
@@ -438,15 +470,16 @@ async function startGroup({ groupName, name }) {
   state.currentUserId = user.id;
   persist();
   const uploaded = await pushCloud(group.id);
-  notify();
   if (!uploaded) {
+    state.currentUserId = null;
+    persist();
+    notify();
     return {
-      ok: true,
-      group,
-      user,
-      warn: "この端末には保存できました。ただし他のスマホからはまだ入れません。Netlifyなど同じ公開URLで開き直してください。",
+      ok: false,
+      error: "グループの共有保存に失敗しました。同じ公開ページ（Netlify）から作り直してください。",
     };
   }
+  notify();
   return { ok: true, group, user };
 }
 
@@ -456,7 +489,11 @@ async function joinWithCode({ code, name }) {
   if (!/^[A-Z2-9]{4,8}$/.test(normalized)) {
     return { ok: false, error: "参加コードは4〜8文字の英数字です" };
   }
-  const remote = await fetchCloud(normalized);
+  let remote = await fetchCloud(normalized);
+  if ((!remote.ok || !remote.data?.group) && (remote.status >= 500 || remote.status === 0)) {
+    await sleep(500);
+    remote = await fetchCloud(normalized);
+  }
   if (remote.ok && remote.data && remote.data.group) {
     mergeSnapshot(remote.data);
   }

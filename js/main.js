@@ -334,7 +334,7 @@ function renderLogin() {
     }
     const person = readPerson(e.target, "join");
     const result = await joinWithCode({
-      code: new FormData(e.target).get("code"),
+      code: String(new FormData(e.target).get("code") || "").trim(),
       ...person,
     });
     if (!result.ok) {
