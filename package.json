@@ -1,7 +1,10 @@
 {
   "name": "nicopoke",
   "private": true,
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
-    "@netlify/blobs": "^8.10.0"
+    "@netlify/blobs": "10.7.9"
   }
 }
