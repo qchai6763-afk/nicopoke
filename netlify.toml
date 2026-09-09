@@ -7,6 +7,17 @@
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"
+  external_node_modules = ["@netlify/blobs"]
+
+[[redirects]]
+  from = "/api/group"
+  to = "/.netlify/functions/group"
+  status = 200
+
+[[redirects]]
+  from = "/api/group/*"
+  to = "/.netlify/functions/group/:splat"
+  status = 200
 
 [[redirects]]
   from = "/style.css"
