@@ -3,6 +3,7 @@ const app = document.getElementById("app");
 const ICO = {
   cam: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8h3l2-3h6l2 3h3v12H4V8z"/><circle cx="12" cy="14" r="3.5"/></svg>',
   grid: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></svg>',
+  play: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><circle cx="16.5" cy="16.5" r="3"/></svg>',
   me: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="3.2"/><path d="M5 19c1.5-3.2 4-5 7-5s5.5 1.8 7 5"/></svg>',
 };
 
@@ -25,12 +26,6 @@ function escapeHtml(str = "") {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
-}
-
-function maskTheme(theme = "") {
-  const s = String(theme);
-  if (!s) return "○○○";
-  return s[0] + "○".repeat(Math.max(2, Math.min(s.length - 1, 6)));
 }
 
 function commentsOpen(questId) {
@@ -157,7 +152,7 @@ function statusRow(group, viewerId) {
     waiting.some((r) => r.user.id === viewerId) && othersPosted.length
       ? `<div class="notice">${escapeHtml(othersPosted[0].user.name)}さんが先に写真を送りました<small>あなたの番です。</small></div>`
       : othersPosted.length && !waiting.some((r) => r.user.id === viewerId)
-        ? `<div class="notice">みんなの写真が届いています<small>見て、お題を推理してみましょう。</small></div>`
+        ? `<div class="notice">みんなの写真が届いています<small>見て、おしゃべりしてみましょう。</small></div>`
         : "";
 
   return `
@@ -206,8 +201,9 @@ function chrome(inner, active) {
           : ""
       }${inner}</main>
       <nav class="tabbar">
-        <a href="#/today" class="${active === "today" ? "active" : ""}">${ICO.cam}<span>今日のお題</span></a>
-        <a href="#/feed" class="${active === "feed" ? "active" : ""}">${ICO.grid}<span>家族の写真</span></a>
+        <a href="#/today" class="${active === "today" ? "active" : ""}">${ICO.cam}<span>今日</span></a>
+        <a href="#/feed" class="${active === "feed" ? "active" : ""}">${ICO.grid}<span>家族</span></a>
+        <a href="#/brain" class="${active === "brain" ? "active" : ""}">${ICO.play}<span>息抜き</span></a>
         <a href="#/me" class="${active === "me" ? "active" : ""}">${ICO.me}<span>わたし</span></a>
       </nav>
       ${
@@ -220,20 +216,7 @@ function chrome(inner, active) {
                 <button type="button" data-pop-ok>つづける</button>
               </div>
             </div>`
-          : window.__guessPop
-            ? `<div class="pop guess-pop" data-guess-pop>
-              <div class="confetti" aria-hidden="true">${Array.from(
-                { length: 22 },
-                (_, i) => `<i style="--i:${i}"></i>`
-              ).join("")}</div>
-              <div class="pop-card">
-                <div class="pop-fire">🎉</div>
-                <b>正解！</b>
-                <p>お題は「${escapeHtml(window.__guessPop.theme || "")}」でした</p>
-                <button type="button" data-guess-pop-ok>やったね</button>
-              </div>
-            </div>`
-            : ""
+          : ""
       }
     </div>
   `;
@@ -249,14 +232,6 @@ function bindTop() {
       window.__streakPop = 0;
       render();
     }
-  });
-  const closeGuess = () => {
-    window.__guessPop = null;
-    render();
-  };
-  app.querySelector("[data-guess-pop-ok]")?.addEventListener("click", closeGuess);
-  app.querySelector("[data-guess-pop]")?.addEventListener("click", (e) => {
-    if (e.target.hasAttribute("data-guess-pop")) closeGuess();
   });
 }
 
@@ -287,7 +262,7 @@ function renderLogin() {
     <div class="gate">
       <div class="badge">にこぽけ</div>
       <h1>今日の一枚を、<br />みんなで。</h1>
-      <p>用意されたお題に合わせて写真を送ります。参加コードで、別のスマホからも同じグループに入れます。</p>
+      <p>お題をひとつ選んで、写真を送ります。家族は写真を見ておしゃべりします。</p>
       ${err ? `<p class="gate-err">${escapeHtml(err)}</p>` : ""}
       ${warn ? `<p class="gate-warn">${escapeHtml(warn)}</p>` : ""}
       ${
@@ -398,7 +373,7 @@ function renderToday() {
   const editor = posted
     ? ""
     : `<div class="theme-edit">
-         <p class="kicker">別のお題　3つから選ぶ</p>
+         <p class="kicker">お題を1つ選ぶ</p>
          <div class="chips trio">
            ${trio
              .map(
@@ -421,29 +396,35 @@ function renderToday() {
          <img src="${quest.photoDataUrl}" alt="" />
          <div class="done-chip">送りました</div>
        </div>
-       ${
-         quest.revealed
-           ? `<p class="text">お題はみんなに公開されています</p>`
-           : `<button class="ghost" data-reveal type="button">お題を教える</button>`
-       }
-       <a class="primary" href="#/feed">みんなの写真を見る</a>`
+       <p class="theme-mine">あなたの答え　${escapeHtml(quest.theme)}</p>
+       ${quest.caption ? `<p class="caption-line">「${escapeHtml(quest.caption)}」</p>` : ""}
+       <a class="primary" href="#/feed">みんなの写真を見る</a>
+       <a class="ghost" href="#/brain">脳トレで息抜き</a>`
     : preview
       ? `<div class="stage"><img src="${preview}" alt="プレビュー" /></div>
+         <label class="caption-label">一言コメント（任意）
+           <input class="pill" data-caption maxlength="40" placeholder="例）すごくおいしかった" value="${escapeHtml(
+             window.__captionDraft || ""
+           )}" />
+         </label>
          <div class="preview-actions">
            <button class="primary" type="button" data-confirm>この写真で送る</button>
            <button class="ghost" type="button" data-clear-preview>選びなおす</button>
          </div>`
       : `${photoPickHtml("quest")}
-         <p class="help">スマホやパソコンに保存してある写真フォルダーからも選べます。</p>`;
+         <p class="help">カメラで撮るか、フォルダーから選べます。</p>`;
 
   app.innerHTML = chrome(
     `
       ${statusRow(group, user.id)}
       ${riskNote}
       <div class="streak ${streak ? "pulse" : ""}">${escapeHtml(streakLabel(streak))}</div>
-      <p class="kicker">${formatDateLabel(todayKey())}　あなただけが見えるお題</p>
-      <h1 class="theme">${escapeHtml(quest.theme)}</h1>
-      <p class="help">3つのうち1つを選んで、その写真を送ってください。家族には答えが隠れます。</p>
+      <p class="kicker">${formatDateLabel(todayKey())}　今日の一枚</p>
+      ${
+        posted
+          ? ""
+          : `<p class="help">3つのうち1つを選んで写真を送ってください。家族には答えの文字は見えません。</p>`
+      }
       ${editor}
       ${stage}
     `,
@@ -458,17 +439,23 @@ function renderToday() {
       render();
     });
   });
+  app.querySelector("[data-caption]")?.addEventListener("input", (e) => {
+    window.__captionDraft = e.target.value;
+  });
   app.querySelector("[data-confirm]")?.addEventListener("click", () => {
     if (!window.__photoPreview) return;
-    postPhoto(quest.id, { photoDataUrl: window.__photoPreview, caption: "" });
+    postPhoto(quest.id, {
+      photoDataUrl: window.__photoPreview,
+      caption: window.__captionDraft || "",
+    });
     window.__photoPreview = "";
+    window.__captionDraft = "";
     go("/feed");
   });
   app.querySelector("[data-clear-preview]")?.addEventListener("click", () => {
     window.__photoPreview = "";
     render();
   });
-  app.querySelector("[data-reveal]")?.addEventListener("click", () => revealTheme(quest.id));
   app.querySelectorAll("[data-set-theme]").forEach((btn) => {
     btn.addEventListener("click", () => setQuestTheme(quest.id, btn.dataset.setTheme));
   });
@@ -479,20 +466,13 @@ function postCard(quest, viewerId) {
   const who = userById(quest.userId);
   const mine = quest.userId === viewerId;
   const posted = isPosted(quest);
-  const themeOn = canSeeTheme(quest, viewerId);
-  const guesses = guessesFor(quest.id);
-  const myGuesses = guesses.filter((g) => g.userId === viewerId);
-  const last = myGuesses[myGuesses.length - 1];
-  const won = myGuesses.some((g) => g.correct);
   const comments = commentsFor(quest.id)
     .slice()
     .sort((a, b) => (a.at || 0) - (b.at || 0));
   const latest = comments[comments.length - 1];
   const likes = likeCount(quest.id);
   const liked = hasLiked(quest.id, viewerId);
-  const openTalk = posted;
   const expanded = commentsOpen(quest.id);
-  const hint = `${quest.categoryEmoji || "💡"} ${escapeHtml(quest.categoryLabel || "ヒント")}`;
 
   const peek = latest
     ? `<button class="comment-peek" type="button" data-toggle-comments="${quest.id}">
@@ -506,62 +486,24 @@ function postCard(quest, viewerId) {
 
   const media = posted
     ? `<img src="${quest.photoDataUrl}" alt="" />
-       ${
-         themeOn
-           ? `<div class="tag">お題：${escapeHtml(quest.theme)}</div>`
-           : `<div class="tag hint">ヒント：${hint}<small>答え ${escapeHtml(maskTheme(quest.theme))}</small></div>`
-       }
+       ${mine ? `<div class="tag">答え：${escapeHtml(quest.theme)}</div>` : ""}
        ${peek}`
     : `<div class="locked"><div><span>🔒</span><em>waiting</em></div></div>`;
-
-  const choices = posted && !mine && !themeOn ? guessChoices(quest) : [];
-
-  const guessUi =
-    posted && !mine && !themeOn
-      ? `<div class="guess-box">
-         <p class="kicker">② お題を選ぶ / 書く</p>
-         <p class="help">ヒントは写真の左上。答えは伏字です。3つのうち1つ、または自分で書いて当ててください。</p>
-         <div class="chips trio">
-           ${choices
-             .map(
-               (c) =>
-                 `<button class="chip" type="button" data-chip="${quest.id}" data-value="${escapeHtml(
-                   c
-                 )}" ${won ? "disabled" : ""}>${escapeHtml(c)}</button>`
-             )
-             .join("")}
-         </div>
-         <div class="actions">
-           <form data-guess="${quest.id}">
-             <input class="pill" name="guess" placeholder="お題を書いて当てる" ${won ? "disabled" : ""} />
-             <button class="pill-btn" ${won ? "disabled" : ""}>当てる</button>
-           </form>
-         </div>
-         ${
-           last
-             ? `<p class="${last.correct ? "ok" : "ng"}">${last.correct ? "正解です" : "まだちがいます"}　「${escapeHtml(
-                 last.text
-               )}」</p>`
-             : ""
-         }
-       </div>`
-      : themeOn && posted && !mine
-        ? `<p class="ok">正解！　お題は「${escapeHtml(quest.theme)}」</p>`
-        : "";
-
-  const revealUi =
-    mine && posted && !quest.revealed
-      ? `<button class="ghost" data-reveal="${quest.id}" type="button">お題を教える</button>`
-      : "";
 
   const waitCopy = !posted
     ? `<p class="text">${escapeHtml(who.name)}さんは、まだ今日の一枚を待っています。</p>`
     : "";
 
-  const talkUi = openTalk
+  const captionLine =
+    posted && quest.caption
+      ? `<p class="caption-line">「${escapeHtml(quest.caption)}」</p>`
+      : posted && !mine
+        ? `<p class="help">写真を見て、おしゃべりしてみましょう。</p>`
+        : "";
+
+  const talkUi = posted
     ? `<div class="talk">
          <form class="composer" data-comment="${quest.id}">
-           <p class="kicker">① コメントを書く</p>
            <div class="actions">
              <input class="pill" name="text" placeholder="コメントを書く" />
              <button class="pill-btn" type="submit">送る</button>
@@ -598,6 +540,7 @@ function postCard(quest, viewerId) {
       </div>
       <div class="frame">${media}</div>
       ${waitCopy}
+      ${captionLine}
       ${
         posted
           ? `<div class="react">
@@ -608,32 +551,16 @@ function postCard(quest, viewerId) {
           : ""
       }
       ${talkUi}
-      ${guessUi}
-      ${revealUi}
     </article>
   `;
 }
 
 function bindFeedActions() {
-  app.querySelectorAll("[data-guess]").forEach((form) => {
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      submitGuess(form.dataset.guess, new FormData(form).get("guess"));
-    });
-  });
-  app.querySelectorAll("[data-chip]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      submitGuess(btn.dataset.chip, btn.dataset.value);
-    });
-  });
   app.querySelectorAll("[data-comment]").forEach((form) => {
     form.addEventListener("submit", (e) => {
       e.preventDefault();
       addComment(form.dataset.comment, new FormData(form).get("text"));
     });
-  });
-  app.querySelectorAll("[data-reveal]").forEach((btn) => {
-    btn.addEventListener("click", () => revealTheme(btn.dataset.reveal));
   });
   app.querySelectorAll("[data-like]").forEach((btn) => {
     btn.addEventListener("click", () => toggleLike(btn.dataset.like));
@@ -743,7 +670,6 @@ function renderMe() {
   }
   const members = groupMembers(group.id);
   const mineStreak = streakFor(user.id);
-  const mineScore = correctCount(user.id);
 
   app.innerHTML = chrome(
     `
@@ -763,11 +689,11 @@ function renderMe() {
       }
       <div class="stats">
         <div class="stat"><span class="text" style="margin:0">連続投稿</span><b>🔥 ${mineStreak}日</b></div>
-        <div class="stat"><span class="text" style="margin:0">お題の正解</span><b>${mineScore}回</b></div>
         <div class="stat"><span class="text" style="margin:0">もらったいいね</span><b>❤️ ${likesReceived(
           user.id
         )}</b></div>
       </div>
+      <a class="primary" href="#/brain">脳トレで息抜き</a>
       <form data-name>
         <p class="kicker">表示名</p>
         <div class="actions">
@@ -797,16 +723,14 @@ function renderMe() {
         <button class="pill-btn" type="submit">追加する</button>
       </form>
       <p class="kicker">家族から見える記録</p>
-      <p class="help">正解数と連続日数は、同じグループのメンバーにも表示されます。</p>
+      <p class="help">連続日数といいねは、同じグループのメンバーにも表示されます。</p>
       ${members
         .map((m) => {
           const you = m.id === user.id ? "（あなた）" : "";
           return `<div class="member">
             ${avatarMark(m)}
             <div><b>${escapeHtml(m.name)}${you}</b></div>
-            <div class="nums">🔥 ${streakFor(m.id)}日<br />正解 ${correctCount(m.id)}<br />❤️ ${likesReceived(
-              m.id
-            )}</div>
+            <div class="nums">🔥 ${streakFor(m.id)}日<br />❤️ ${likesReceived(m.id)}</div>
           </div>`;
         })
         .join("")}
@@ -824,7 +748,6 @@ function renderMe() {
         }
       </div>
       <button class="ghost" type="button" data-logout>ログアウト</button>
-      <a class="ghost yobo-link" href="yobo-app.html">脳トレ・おしゃべりカード</a>
     `,
     "me"
   );
@@ -878,6 +801,7 @@ function render() {
   }
   if (path === "login") return renderLogin();
   if (path === "feed") return renderFeed();
+  if (path === "brain") return renderBrain();
   if (path === "me") return renderMe();
   return renderToday();
 }
@@ -887,6 +811,7 @@ refreshFromCloud().then((changed) => {
   if (changed) render();
 });
 window.setInterval(() => {
+  if (route() === "brain") return;
   refreshFromCloud().then((changed) => {
     if (changed) render();
   });

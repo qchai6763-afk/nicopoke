@@ -91,7 +91,7 @@ function load() {
     parsed.quests.forEach((q) => {
       if (!q.category) {
         const found = SLOT_CATS.find((c) => c.items.includes(q.theme));
-        const cat = found || SLOT_CATS[2];
+        const cat = found || SLOT_CATS[0];
         q.category = cat.id;
         q.categoryLabel = cat.label;
         q.categoryEmoji = cat.emoji;
@@ -729,7 +729,7 @@ function postPhoto(questId, { photoDataUrl, caption }) {
   if (!quest) return;
   const before = streakFor(quest.userId);
   quest.photoDataUrl = photoDataUrl;
-  quest.caption = caption.trim();
+  quest.caption = String(caption || "").trim();
   quest.postedAt = Date.now();
   const after = streakFor(quest.userId);
   window.__streakPop = after > before || after === 1 ? after : 0;

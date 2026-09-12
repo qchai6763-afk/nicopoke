@@ -1,5 +1,18 @@
 const SLOT_CATS = [
   {
+    id: "talk",
+    label: "おしゃべり",
+    emoji: "💬",
+    items: [
+      "最近の外食でおいしかった食べ物",
+      "今日のおやつ・ごはん",
+      "今一番食べたいもの",
+      "今はまってるもの",
+      "昔の写真",
+      "今日の服装",
+    ],
+  },
+  {
     id: "face",
     label: "顔",
     emoji: "😊",
@@ -11,18 +24,6 @@ const SLOT_CATS = [
       "真剣な顔",
     ],
   },
-  {
-    id: "food",
-    label: "食べもの",
-    emoji: "🍪",
-    items: ["今日のおやつ・ごはん", "今一番食べたいもの"],
-  },
-  {
-    id: "today",
-    label: "きょう",
-    emoji: "📷",
-    items: ["今日の服装", "今はまってるもの", "昔の写真"],
-  },
 ];
 
 const THEMES = SLOT_CATS.flatMap((c) => c.items);
@@ -32,3 +33,16 @@ const ICONS = ["🌸", "🌞", "🍀", "☕", "📷", "🌙", "🐶", "🐱", "�
 const USER_COLORS = ["#ff8a7a", "#7ec8a3", "#ffb347", "#8ecae6", "#c9a0dc", "#ff8fab"];
 
 const MAX_REROLLS = 3;
+
+const KANA_WORDS = [
+  { word: "さくら", mark: "🌸", say: "春の花" },
+  { word: "かぞく", mark: "🏠", say: "いっしょにくらす人" },
+  { word: "ごはん", mark: "🍚", say: "毎日たべるもの" },
+  { word: "でんしゃ", mark: "🚃", say: "線路を走るのりもの" },
+  { word: "おちゃ", mark: "🍵", say: "あたたかい飲み物" },
+  { word: "ねこ", mark: "🐱", say: "にゃーとなく動物" },
+  { word: "はな", mark: "🌻", say: "いろとりどりの植物" },
+  { word: "そら", mark: "☁️", say: "あおいてっぺん" },
+];
+
+const MEMORY_MARKS = ["🌸", "🚃", "🍙", "📺", "⚾", "🍵", "🐱", "📷"];

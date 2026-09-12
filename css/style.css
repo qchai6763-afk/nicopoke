@@ -111,7 +111,7 @@ select {
   border: 2px solid #ffd0dc;
   box-shadow: 0 10px 24px rgba(232, 93, 117, 0.12);
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
   padding: 8px;
   z-index: 30;
   gap: 6px;
@@ -127,7 +127,7 @@ select {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  font-size: 0.78rem;
+  font-size: 0.7rem;
   font-weight: 700;
 }
 
@@ -1298,4 +1298,162 @@ a.ghost {
 
 .mascot::after {
   right: 16px;
+}
+
+.theme-mine {
+  font-weight: 800;
+  font-size: 1.15rem;
+  margin: 12px 0 8px;
+}
+
+.caption-line {
+  background: #fff;
+  border-radius: 16px;
+  padding: 12px 14px;
+  font-weight: 700;
+  margin: 8px 0 4px;
+}
+
+.caption-label {
+  display: block;
+  margin: 12px 0 8px;
+  font-weight: 700;
+}
+
+.brain-card {
+  display: block;
+  background: #fff;
+  border-radius: 22px;
+  padding: 22px 18px;
+  margin: 0 0 14px;
+  text-decoration: none;
+  color: inherit;
+  box-shadow: 0 8px 0 #ffd0dc;
+}
+
+.brain-card b {
+  display: block;
+  font-size: 1.35rem;
+  margin-bottom: 6px;
+}
+
+.brain-card span {
+  color: var(--mute);
+  font-weight: 600;
+}
+
+.back-link {
+  display: inline-block;
+  font-weight: 800;
+  color: #e85d75;
+  text-decoration: none;
+  min-height: 44px;
+  margin-bottom: 8px;
+}
+
+.sudo {
+  background: #fff;
+  border-radius: 20px;
+  padding: 12px;
+  margin: 12px 0;
+}
+
+.sudo-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.sudo-cell {
+  min-height: 64px;
+  border: 0;
+  border-radius: 16px;
+  background: #fff4f0;
+  font-size: 1.6rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.sudo-cell.given {
+  background: #ffe07a;
+  cursor: default;
+}
+
+.sudo-cell.bad {
+  background: #ffd0d0;
+}
+
+.memo {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.memo-card {
+  aspect-ratio: 1;
+  border: 0;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ff9eb5, #ff6f91);
+  cursor: pointer;
+  font-size: 2rem;
+  overflow: hidden;
+  padding: 0;
+}
+
+.memo-card.on {
+  background: #fff;
+}
+
+.memo-card.done {
+  opacity: 0.55;
+}
+
+.memo-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.kana-mark {
+  font-size: 3.4rem;
+  text-align: center;
+  margin: 8px 0;
+}
+
+.kana-out {
+  min-height: 64px;
+  background: #fff;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  font-size: 1.8rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.kana-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0;
+  justify-content: center;
+}
+
+.kana-tile {
+  min-width: 64px;
+  min-height: 64px;
+  border: 0;
+  border-radius: 18px;
+  background: #fff;
+  font-size: 1.6rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.brain-ok {
+  font-size: 1.2rem;
+  font-weight: 800;
+  text-align: center;
 }
