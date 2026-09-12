@@ -540,12 +540,14 @@ function ensureTodayQuests(groupId) {
     );
     if (!exists) {
         const slot = slotFromHash(member.id, date);
+        const questId = `q-${member.id}-${date}`;
         state.quests.push({
-          id: `q-${member.id}-${date}`,
+          id: questId,
           groupId,
           userId: member.id,
           date,
           theme: slot.theme,
+          themeOptions: makeThemeTrio(questId, slot.theme, 0),
           category: slot.category,
           categoryLabel: slot.categoryLabel,
           categoryEmoji: slot.categoryEmoji,
@@ -555,6 +557,21 @@ function ensureTodayQuests(groupId) {
           revealed: false,
           postedAt: null,
         });
+    } else if (!isPosted(exists)) {
+      const staleTheme = !THEMES.includes(exists.theme);
+      const staleOptions =
+        !Array.isArray(exists.themeOptions) ||
+        exists.themeOptions.some((t) => t !== exists.theme && !THEMES.includes(t));
+      if (staleTheme) {
+        const slot = slotFromHash(member.id, date);
+        exists.theme = slot.theme;
+        exists.category = slot.category;
+        exists.categoryLabel = slot.categoryLabel;
+        exists.categoryEmoji = slot.categoryEmoji;
+        exists.themeOptions = makeThemeTrio(exists.id, exists.theme, exists.rerollsUsed || 0);
+      } else if (staleOptions) {
+        exists.themeOptions = makeThemeTrio(exists.id, exists.theme, exists.rerollsUsed || 0);
+      }
     }
   });
   persist();
@@ -618,6 +635,7 @@ function rerollQuest(questId) {
   quest.categoryLabel = next.categoryLabel;
   quest.categoryEmoji = next.categoryEmoji;
   quest.rerollsUsed = (quest.rerollsUsed || 0) + 1;
+  quest.themeOptions = makeThemeTrio(quest.id, quest.theme, quest.rerollsUsed);
   notify();
   return { ok: true, left: rerollsLeft(quest) };
 }
@@ -629,6 +647,9 @@ function setQuestTheme(questId, theme) {
   if (!t) return { ok: false, error: "お題を入れてください" };
   const found = SLOT_CATS.find((c) => c.items.includes(t));
   quest.theme = t;
+  if (!Array.isArray(quest.themeOptions) || !quest.themeOptions.includes(t)) {
+    quest.themeOptions = makeThemeTrio(quest.id, t, quest.rerollsUsed || 0);
+  }
   if (found) {
     quest.category = found.id;
     quest.categoryLabel = found.label;
@@ -728,18 +749,9 @@ function familyStatus(groupId) {
   });
 }
 
-function guessChoices(quest) {
-  if (!quest) return [];
-  const pool = THEMES.filter((t) => t !== quest.theme);
-  const decoys = [];
-  let h = hashString(quest.id || quest.theme);
-  const copy = pool.slice();
-  while (decoys.length < 3 && copy.length) {
-    const i = h % copy.length;
-    decoys.push(copy.splice(i, 1)[0]);
-    h = (h * 31 + 17) >>> 0;
-  }
-  const all = [quest.theme].concat(decoys);
+function shuffleSeeded(items, seed) {
+  const all = items.slice();
+  let h = hashString(String(seed));
   for (let i = all.length - 1; i > 0; i -= 1) {
     h = (h * 31 + i) >>> 0;
     const j = h % (i + 1);
@@ -748,6 +760,52 @@ function guessChoices(quest) {
     all[j] = tmp;
   }
   return all;
+}
+
+function pickFromPool(pool, count, seed) {
+  const copy = pool.slice();
+  const picked = [];
+  let h = hashString(String(seed));
+  while (picked.length < count && copy.length) {
+    const i = h % copy.length;
+    picked.push(copy.splice(i, 1)[0]);
+    h = (h * 31 + 17) >>> 0;
+  }
+  return picked;
+}
+
+function makeThemeTrio(questId, selectedTheme, salt) {
+  const seed = `${questId}:${salt}`;
+  const extras = pickFromPool(
+    THEMES.filter((t) => t !== selectedTheme),
+    2,
+    seed
+  );
+  return shuffleSeeded([selectedTheme].concat(extras), `${seed}:ord`);
+}
+
+function themeTrio(quest) {
+  if (!quest) return [];
+  if (
+    Array.isArray(quest.themeOptions) &&
+    quest.themeOptions.length === 3 &&
+    quest.themeOptions.includes(quest.theme)
+  ) {
+    return quest.themeOptions;
+  }
+  quest.themeOptions = makeThemeTrio(quest.id, quest.theme, quest.rerollsUsed || 0);
+  persist();
+  return quest.themeOptions;
+}
+
+function guessChoices(quest) {
+  if (!quest) return [];
+  const decoys = pickFromPool(
+    THEMES.filter((t) => t !== quest.theme),
+    2,
+    quest.id || quest.theme
+  );
+  return shuffleSeeded([quest.theme].concat(decoys), `${quest.id || quest.theme}:guess`);
 }
 
 function revealTheme(questId) {
@@ -773,6 +831,9 @@ function submitGuess(questId, text) {
     at: Date.now(),
   };
   state.guesses.push(guess);
+  if (correct) {
+    window.__guessPop = { theme: quest.theme };
+  }
   notify();
   return guess;
 }
