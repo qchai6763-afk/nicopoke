@@ -111,7 +111,7 @@ select {
   border: 2px solid #ffd0dc;
   box-shadow: 0 10px 24px rgba(232, 93, 117, 0.12);
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
   padding: 8px;
   z-index: 30;
   gap: 6px;
@@ -127,7 +127,7 @@ select {
   align-items: center;
   justify-content: center;
   gap: 2px;
-  font-size: 0.78rem;
+  font-size: 0.7rem;
   font-weight: 700;
 }
 
@@ -613,12 +613,60 @@ a.ghost {
 .tag {
   position: absolute;
   left: 12px;
-  bottom: 12px;
+  top: 12px;
   background: rgba(0, 0, 0, 0.78);
   color: #fff;
-  border-radius: 999px;
+  border-radius: 16px;
   padding: 8px 12px;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  max-width: 68%;
+}
+
+.tag.hint small {
+  display: block;
+  margin-top: 2px;
+  font-weight: 600;
+  font-size: 0.8rem;
+  opacity: 0.9;
+}
+
+.comment-peek {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  max-width: 58%;
+  border: 0;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.94);
+  color: #222;
+  border-radius: 16px 16px 4px 16px;
+  padding: 8px 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.35;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.comment-peek b {
+  display: block;
+  font-size: 0.72rem;
+  opacity: 0.55;
+}
+
+.comment-peek span {
+  display: inline-block;
+  margin-left: 4px;
+  color: #e85d75;
+}
+
+.comment-peek.empty {
+  border-radius: 999px;
   font-weight: 700;
 }
 
@@ -627,6 +675,17 @@ a.ghost {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
+}
+
+.chips.trio {
+  display: grid;
+  gap: 10px;
+}
+
+.chips.trio .chip {
+  width: 100%;
+  min-height: 56px;
+  border-radius: 18px;
 }
 
 .chip {
@@ -690,10 +749,42 @@ a.ghost {
   color: #b42318;
 }
 
-.thread {
+.talk {
+  margin-top: 8px;
+}
+
+.talk .composer {
+  display: block;
+  flex: none;
+}
+
+.guess-box {
+  background: #fff;
+  border-radius: 20px;
+  padding: 14px 14px 16px;
   margin-top: 12px;
-  display: grid;
+}
+
+.thread-toggle {
+  width: 100%;
+  margin-top: 8px;
+  border: 0;
+  background: transparent;
+  color: #e85d75;
+  font-weight: 700;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.thread {
+  margin-top: 0;
+  display: none;
   gap: 8px;
+}
+
+.thread.open {
+  display: grid;
+  margin-top: 8px;
 }
 
 .bubble {
@@ -761,17 +852,8 @@ a.ghost {
   margin: 0 0 24px;
 }
 
-.theme-pick {
-  margin-top: 8px;
-}
-
-.theme-pick summary {
-  cursor: pointer;
-  font-weight: 700;
-  min-height: 48px;
-  display: flex;
-  align-items: center;
-  color: #e85d75;
+.log-kicker {
+  margin-top: 28px;
 }
 
 .chip.on {
@@ -1028,6 +1110,36 @@ a.ghost {
   cursor: pointer;
 }
 
+.guess-pop {
+  overflow: hidden;
+}
+
+.guess-pop .confetti {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.guess-pop .confetti i {
+  position: absolute;
+  top: -12px;
+  left: calc(4% + (var(--i) * 4.3%));
+  width: 10px;
+  height: 18px;
+  border-radius: 2px;
+  background: hsl(calc(var(--i) * 17), 85%, 62%);
+  animation: fall 1.15s ease-in both;
+  animation-delay: calc(var(--i) * 0.03s);
+}
+
+@keyframes fall {
+  to {
+    transform: translateY(110vh) rotate(240deg);
+    opacity: 0.2;
+  }
+}
+
 @keyframes popin {
   from {
     transform: scale(0.86);
@@ -1186,4 +1298,162 @@ a.ghost {
 
 .mascot::after {
   right: 16px;
+}
+
+.theme-mine {
+  font-weight: 800;
+  font-size: 1.15rem;
+  margin: 12px 0 8px;
+}
+
+.caption-line {
+  background: #fff;
+  border-radius: 16px;
+  padding: 12px 14px;
+  font-weight: 700;
+  margin: 8px 0 4px;
+}
+
+.caption-label {
+  display: block;
+  margin: 12px 0 8px;
+  font-weight: 700;
+}
+
+.brain-card {
+  display: block;
+  background: #fff;
+  border-radius: 22px;
+  padding: 22px 18px;
+  margin: 0 0 14px;
+  text-decoration: none;
+  color: inherit;
+  box-shadow: 0 8px 0 #ffd0dc;
+}
+
+.brain-card b {
+  display: block;
+  font-size: 1.35rem;
+  margin-bottom: 6px;
+}
+
+.brain-card span {
+  color: var(--mute);
+  font-weight: 600;
+}
+
+.back-link {
+  display: inline-block;
+  font-weight: 800;
+  color: #e85d75;
+  text-decoration: none;
+  min-height: 44px;
+  margin-bottom: 8px;
+}
+
+.sudo {
+  background: #fff;
+  border-radius: 20px;
+  padding: 12px;
+  margin: 12px 0;
+}
+
+.sudo-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.sudo-cell {
+  min-height: 64px;
+  border: 0;
+  border-radius: 16px;
+  background: #fff4f0;
+  font-size: 1.6rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.sudo-cell.given {
+  background: #ffe07a;
+  cursor: default;
+}
+
+.sudo-cell.bad {
+  background: #ffd0d0;
+}
+
+.memo {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.memo-card {
+  aspect-ratio: 1;
+  border: 0;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ff9eb5, #ff6f91);
+  cursor: pointer;
+  font-size: 2rem;
+  overflow: hidden;
+  padding: 0;
+}
+
+.memo-card.on {
+  background: #fff;
+}
+
+.memo-card.done {
+  opacity: 0.55;
+}
+
+.memo-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.kana-mark {
+  font-size: 3.4rem;
+  text-align: center;
+  margin: 8px 0;
+}
+
+.kana-out {
+  min-height: 64px;
+  background: #fff;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  font-size: 1.8rem;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+}
+
+.kana-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0;
+  justify-content: center;
+}
+
+.kana-tile {
+  min-width: 64px;
+  min-height: 64px;
+  border: 0;
+  border-radius: 18px;
+  background: #fff;
+  font-size: 1.6rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.brain-ok {
+  font-size: 1.2rem;
+  font-weight: 800;
+  text-align: center;
 }
