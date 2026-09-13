@@ -384,10 +384,6 @@ function renderToday() {
              )
              .join("")}
          </div>
-         <p class="lefts">別の3つにできる回数　残り ${rerollsLeft(quest)} / ${MAX_REROLLS} 回</p>
-         <button class="reroll" type="button" data-reroll ${rerollsLeft(quest) ? "" : "disabled"}>
-           3つを引き直す
-         </button>
        </div>`;
 
   const preview = window.__photoPreview;
@@ -459,7 +455,6 @@ function renderToday() {
   app.querySelectorAll("[data-set-theme]").forEach((btn) => {
     btn.addEventListener("click", () => setQuestTheme(quest.id, btn.dataset.setTheme));
   });
-  app.querySelector("[data-reroll]")?.addEventListener("click", () => rerollQuest(quest.id));
 }
 
 function postCard(quest, viewerId) {
@@ -607,18 +602,32 @@ function renderFeed() {
 
   const today = todayKey();
   const all = questsForGroup(group.id);
-  const quests = all.filter((q) => q.date === today);
+  const postedDates = [...new Set(all.filter((q) => isPosted(q)).map((q) => q.date))];
+  if (!postedDates.includes(today)) postedDates.unshift(today);
+  postedDates.sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
+  if (window.__feedDateIndex == null) window.__feedDateIndex = 0;
+  window.__feedDateIndex = Math.max(0, Math.min(window.__feedDateIndex, postedDates.length - 1));
+  const viewDate = postedDates[window.__feedDateIndex] || today;
+  const isLatest = viewDate === postedDates[0];
+  const isOldest = window.__feedDateIndex >= postedDates.length - 1;
+  const quests = all.filter((q) => q.date === viewDate);
   const others = quests.filter((q) => q.userId !== user.id);
   const mine = quests.find((q) => q.userId === user.id);
-  const pastPosted = all.filter((q) => q.date !== today && isPosted(q));
-  const pastDates = [...new Set(pastPosted.map((q) => q.date))];
-  const board = todayBoard(group.id);
+  const board = viewDate === today ? todayBoard(group.id) : [];
   const top = board[0];
   const fun = board.flatMap((b) => b.comments.map((c) => ({ ...c, owner: b.user }))).sort((a, b) => b.at - a.at)[0];
 
   app.innerHTML = chrome(
     `
-      ${statusRow(group, user.id)}
+      <div class="time-nav">
+        <button type="button" class="time-btn" data-feed-older ${isOldest ? "disabled" : ""}>← 過去へ</button>
+        <div class="time-now">
+          <b>${formatDateLabel(viewDate)}</b>
+          <span>${isLatest ? "いちばん新しい日" : `${window.__feedDateIndex + 1} / ${postedDates.length} 日め`}</span>
+        </div>
+        <button type="button" class="time-btn" data-feed-newer ${isLatest ? "disabled" : ""}>最新へ →</button>
+      </div>
+      ${viewDate === today ? statusRow(group, user.id) : ""}
       ${
         top
           ? `<div class="board">
@@ -636,28 +645,25 @@ function renderFeed() {
              </div>`
           : ""
       }
-      ${others.map((q) => postCard(q, user.id)).join("")}
-      ${mine ? `<p class="kicker">あなたの今日</p>${postCard(mine, user.id)}` : ""}
       ${
-        pastPosted.length
-          ? `<p class="kicker log-kicker">これまでの写真</p>
-             <p class="help">みんなの過去の投稿と写真を、あとから見返せます。</p>
-             ${pastDates
-               .map(
-                 (d) =>
-                   `<p class="kicker">${formatDateLabel(d)}</p>${pastPosted
-                     .filter((q) => q.date === d)
-                     .map((q) => postCard(q, user.id))
-                     .join("")}`
-               )
-               .join("")}`
-          : `<p class="help">過去の投稿は、写真を送り続けるとここに残ります。</p>`
+        others.length || mine
+          ? `${others.map((q) => postCard(q, user.id)).join("")}
+             ${mine ? `<p class="kicker">あなたの写真</p>${postCard(mine, user.id)}` : ""}`
+          : `<p class="help">この日の写真はまだありません。矢印で日付を変えてください。</p>`
       }
     `,
     "feed"
   );
 
   bindTop();
+  app.querySelector("[data-feed-older]")?.addEventListener("click", () => {
+    window.__feedDateIndex = Math.min(postedDates.length - 1, window.__feedDateIndex + 1);
+    render();
+  });
+  app.querySelector("[data-feed-newer]")?.addEventListener("click", () => {
+    window.__feedDateIndex = Math.max(0, window.__feedDateIndex - 1);
+    render();
+  });
   bindFeedActions();
 }
 
