@@ -1457,3 +1457,116 @@ a.ghost {
   font-weight: 800;
   text-align: center;
 }
+
+.time-nav {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr 1fr;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 16px;
+}
+
+.time-btn {
+  min-height: 64px;
+  border: 0;
+  border-radius: 18px;
+  background: #fff;
+  font-weight: 800;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.time-btn:disabled {
+  opacity: 0.35;
+}
+
+.time-now {
+  text-align: center;
+}
+
+.time-now b {
+  display: block;
+  font-size: 1.05rem;
+}
+
+.time-now span {
+  color: var(--mute);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.hunt {
+  display: grid;
+  grid-template-columns: repeat(var(--n), 1fr);
+  gap: 6px;
+  background: #fff;
+  border-radius: 18px;
+  padding: 10px;
+  margin: 10px 0;
+}
+
+.hunt-cell {
+  min-height: 44px;
+  border: 0;
+  border-radius: 10px;
+  background: #fff4f0;
+  font-weight: 900;
+  font-size: 1.15rem;
+  cursor: pointer;
+}
+
+.hunt-cell.path {
+  background: #ffe07a;
+}
+
+.hunt-cell.used {
+  background: #8ee3c4;
+}
+
+.word-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 14px;
+}
+
+.word-list span {
+  background: #fff;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-weight: 800;
+}
+
+.word-list span.got {
+  background: #8ee3c4;
+  text-decoration: line-through;
+}
+
+.brain-card.together {
+  background: #fff8d6;
+}
+
+.shiri-chain {
+  background: #fff;
+  border-radius: 20px;
+  padding: 14px;
+  display: grid;
+  gap: 8px;
+  margin: 10px 0;
+  font-weight: 800;
+  font-size: 1.15rem;
+}
+
+.shiri-next {
+  font-size: 1.6rem;
+  font-weight: 900;
+  text-align: center;
+  margin: 10px 0;
+}
+
+.shiri-in {
+  width: 100%;
+  margin-bottom: 10px;
+  min-height: 64px;
+  font-size: 1.3rem;
+}
