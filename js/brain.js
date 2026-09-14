@@ -15,16 +15,28 @@ function shuffleList(list) {
   return arr;
 }
 
+function memoryPhotos() {
+  const group = currentGroup();
+  if (!group) return [];
+  const seen = new Set();
+  const photos = [];
+  questsForGroup(group.id)
+    .filter((q) => isPosted(q) && q.photoDataUrl)
+    .sort((a, b) => (b.postedAt || 0) - (a.postedAt || 0))
+    .forEach((q) => {
+      if (seen.has(q.photoDataUrl)) return;
+      seen.add(q.photoDataUrl);
+      photos.push(q.photoDataUrl);
+    });
+  return photos;
+}
+
 function memoryFaces() {
-  const photos = albumFor(currentUser().id)
-    .map((q) => q.photoDataUrl)
-    .filter(Boolean)
-    .slice(0, 6);
-  const marks = photos.length >= 3 ? photos : MEMORY_MARKS.slice(0, 6);
-  const pairs = shuffleList(marks.concat(marks)).map((face, i) => ({
+  const photos = memoryPhotos().slice(0, 8);
+  const pairs = shuffleList(photos.concat(photos)).map((face, i) => ({
     id: i,
     face,
-    photo: String(face).startsWith("data:"),
+    photo: true,
     open: false,
     done: false,
   }));
@@ -32,7 +44,11 @@ function memoryFaces() {
 }
 
 function ensureMemory() {
-  if (!window.__memory) window.__memory = memoryFaces();
+  const stale =
+    !window.__memory ||
+    window.__memory.cards.some((c) => !c.photo) ||
+    (!window.__memory.cards.length && memoryPhotos().length);
+  if (stale) window.__memory = memoryFaces();
   return window.__memory;
 }
 
@@ -98,21 +114,6 @@ function pathWord(game) {
   return game.path.map(({ r, c }) => game.grid[r][c]).join("");
 }
 
-function shiritoriTail(word) {
-  const small = { ゃ: "や", ゅ: "ゆ", ょ: "よ", ぁ: "あ", ぃ: "い", ぅ: "う", ぇ: "え", ぉ: "お", っ: "つ" };
-  const chars = [...String(word || "").replace(/[\s　]/g, "")].filter((ch) => ch !== "ー" && ch !== "・");
-  const last = chars[chars.length - 1] || "";
-  return small[last] || last;
-}
-
-function ensureShiri() {
-  if (!window.__shiri) {
-    const start = SHIRI_STARTS[Math.floor(Math.random() * SHIRI_STARTS.length)];
-    window.__shiri = { chain: [start], ended: false, msg: "つぎの人のことばを書いてください" };
-  }
-  return window.__shiri;
-}
-
 function renderBrain() {
   const group = currentGroup();
   if (!group) {
@@ -122,7 +123,6 @@ function renderBrain() {
   const kind = brainKind();
   if (kind === "memory") return renderMemory();
   if (kind === "kana") return renderKana();
-  if (kind === "shiri") return renderShiri();
 
   app.innerHTML = chrome(
     `
@@ -131,15 +131,11 @@ function renderBrain() {
       <p class="help">短い時間で頭をほぐすゲームです。今日の写真とは別です。</p>
       <a class="brain-card" href="#/brain/memory">
         <b>思い出神経衰弱</b>
-        <span>同じ絵を2つ探します。家族の写真があれば使います。</span>
+        <span>家族が送った写真のペアを探します。</span>
       </a>
       <a class="brain-card" href="#/brain/kana">
         <b>ひらがな探し</b>
         <span>マスの中から、たくさんのことばを見つけます。</span>
-      </a>
-      <a class="brain-card together" href="#/brain/shiri">
-        <b>いっしょにしりとり</b>
-        <span>その場の人と画面を見ながら、ことばをつなげます。</span>
       </a>
       <a class="ghost" href="#/today">今日の写真にもどる</a>
     `,
@@ -150,27 +146,39 @@ function renderBrain() {
 
 function renderMemory() {
   const game = ensureMemory();
+  if (!game.cards.length) {
+    app.innerHTML = chrome(
+      `
+        <a class="back-link" href="#/brain">← 脳トレ一覧</a>
+        <p class="kicker">思い出神経衰弱</p>
+        <h1 class="theme">写真がまだありません</h1>
+        <p class="help">家族が送った写真が、カードの絵になります。まず今日の一枚を送ってください。</p>
+        <a class="primary" href="#/today">写真を送る</a>
+      `,
+      "brain"
+    );
+    bindTop();
+    return;
+  }
   const remain = game.cards.filter((c) => !c.done).length;
   app.innerHTML = chrome(
     `
       <a class="back-link" href="#/brain">← 脳トレ一覧</a>
       <p class="kicker">思い出神経衰弱</p>
-      <h1 class="theme">同じ絵をさがす</h1>
+      <h1 class="theme">同じ写真をさがす</h1>
+      <p class="help">家族の投稿写真がカードになっています。同じ思い出を2枚そろえてください。</p>
       <div class="memo">
         ${game.cards
           .map((card, i) => {
             const show = card.open || card.done;
-            const inner = card.photo
-              ? `<img src="${card.face}" alt="" />`
-              : `<span>${card.face}</span>`;
             return `<button type="button" class="memo-card ${show ? "on" : ""} ${
               card.done ? "done" : ""
-            }" data-i="${i}">${show ? inner : ""}</button>`;
+            }" data-i="${i}">${show ? `<img src="${card.face}" alt="" />` : ""}</button>`;
           })
           .join("")}
       </div>
       ${game.won ? `<p class="ok brain-ok">全部そろいました！</p>` : `<p class="help">残り ${remain / 2} 組</p>`}
-      <button class="ghost" type="button" data-new-memo>はじめから</button>
+      <button class="ghost" type="button" data-new-memo>写真を入れ直してはじめる</button>
     `,
     "brain"
   );
@@ -297,73 +305,3 @@ function renderKana() {
   });
 }
 
-function renderShiri() {
-  const game = ensureShiri();
-  const next = shiritoriTail(game.chain[game.chain.length - 1]);
-  app.innerHTML = chrome(
-    `
-      <a class="back-link" href="#/brain">← 脳トレ一覧</a>
-      <p class="kicker">いっしょにできる遊び</p>
-      <h1 class="theme">しりとり</h1>
-      <p class="help">スマホを囲んで、ひとりずつことばを足してください。「ん」で終わりです。</p>
-      <div class="shiri-chain">
-        ${game.chain.map((w, i) => `<span>${i + 1}. ${escapeHtml(w)}</span>`).join("")}
-      </div>
-      ${
-        game.ended
-          ? `<p class="ok brain-ok">「ん」がつきました。${game.chain.length} ことば！</p>`
-          : `<p class="shiri-next">つぎは「${escapeHtml(next)}」から</p>
-             <p class="help">${escapeHtml(game.msg)}</p>
-             <form data-shiri>
-               <input class="pill shiri-in" name="word" maxlength="16" placeholder="${escapeHtml(next)}・・・" autocomplete="off" />
-               <button class="primary" type="submit">つなげる</button>
-             </form>`
-      }
-      <button class="ghost" type="button" data-shiri-new>はじめから</button>
-    `,
-    "brain"
-  );
-  bindTop();
-  app.querySelector("[data-shiri]")?.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const word = String(new FormData(e.target).get("word") || "")
-      .trim()
-      .replace(/[\s　]/g, "");
-    if (word.length < 2) {
-      game.msg = "2文字以上のことばにしてください";
-      renderShiri();
-      return;
-    }
-    if (!/^[ぁ-んァ-ンー]+$/.test(word)) {
-      game.msg = "ひらがな（またはカタカナ）で書いてください";
-      renderShiri();
-      return;
-    }
-    const hira = word.replace(/[ァ-ン]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60));
-    const head = hira[0];
-    if (head !== next) {
-      game.msg = `「${next}」から始まることばです`;
-      renderShiri();
-      return;
-    }
-    if (game.chain.includes(hira)) {
-      game.msg = "同じことばは使えません";
-      renderShiri();
-      return;
-    }
-    game.chain.push(hira);
-    const tail = shiritoriTail(hira);
-    if (tail === "ん") {
-      game.ended = true;
-      game.msg = "";
-    } else {
-      game.msg = "スマホを次の人にわたしてください";
-    }
-    renderShiri();
-  });
-  app.querySelector("[data-shiri-new]")?.addEventListener("click", () => {
-    window.__shiri = null;
-    ensureShiri();
-    renderShiri();
-  });
-}

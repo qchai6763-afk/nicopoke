@@ -1541,32 +1541,3 @@ a.ghost {
   background: #8ee3c4;
   text-decoration: line-through;
 }
-
-.brain-card.together {
-  background: #fff8d6;
-}
-
-.shiri-chain {
-  background: #fff;
-  border-radius: 20px;
-  padding: 14px;
-  display: grid;
-  gap: 8px;
-  margin: 10px 0;
-  font-weight: 800;
-  font-size: 1.15rem;
-}
-
-.shiri-next {
-  font-size: 1.6rem;
-  font-weight: 900;
-  text-align: center;
-  margin: 10px 0;
-}
-
-.shiri-in {
-  width: 100%;
-  margin-bottom: 10px;
-  min-height: 64px;
-  font-size: 1.3rem;
-}
