@@ -1342,14 +1342,41 @@ a.ghost {
   font-weight: 600;
 }
 
-.brain-card.quiz-card {
-  background: #123a8c;
-  color: #fff;
-  box-shadow: 0 8px 0 #8b1e1e;
+.brain-intro {
+  background: #fff;
+  border-radius: 22px;
+  padding: 14px 14px 20px;
+  box-shadow: 0 8px 0 #ffd0dc;
+  margin: 8px 0 16px;
 }
 
-.brain-card.quiz-card span {
-  color: #ffe07a;
+.intro-photo {
+  display: block;
+  width: 100%;
+  max-height: 280px;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 16px;
+  background: #fff4f0;
+}
+
+.intro-lead {
+  font-size: 1.2rem;
+  font-weight: 800;
+  line-height: 1.45;
+  margin: 14px 4px 8px;
+}
+
+.intro-steps {
+  margin: 0 4px 16px;
+  padding-left: 1.4em;
+  font-weight: 700;
+  line-height: 1.55;
+  color: #4a3f3a;
+}
+
+.intro-steps li {
+  margin: 8px 0;
 }
 
 .quiz-show {
@@ -1477,6 +1504,34 @@ a.ghost {
   font-weight: 900;
   color: #ffe07a;
   margin: 8px 0 16px;
+}
+
+.quiz-hist {
+  margin-top: 12px;
+  background: #fff6d6;
+  color: #0b2a6b;
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.quiz-hist.dim {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffe07a;
+}
+
+.quiz-hist p {
+  margin: 0 0 6px;
+  font-weight: 900;
+}
+
+.quiz-hist ul {
+  margin: 0;
+  padding-left: 1.2em;
+  font-weight: 700;
+}
+
+.quiz-hist li {
+  margin: 4px 0;
 }
 
 .back-link {
