@@ -54,28 +54,32 @@ function weekLabel(d = new Date()) {
 }
 
 function moodVisual(kind) {
-  const mood = MOODS.find((m) => m.id === kind);
-  if (mood && mood.photo) {
-    return `<img class="mood-photo" src="${mood.photo}" alt="表情の写真" />`;
-  }
-  return moodSvg(kind);
+  const mood = MOODS.find((m) => m.id === kind) || MOODS[0];
+  return `<img class="mood-photo" src="${mood.photo}" alt="人の顔の写真" />`;
 }
 
-function moodSvg(kind) {
-  const face = {
-    happy: { mouth: "M9 16 Q12 19 15 16", brow: "" },
-    sad: { mouth: "M9 18 Q12 15 15 18", brow: "" },
-    angry: { mouth: "M9 17 L15 17", brow: '<path d="M7 8 L11 10" /><path d="M17 8 L13 10" />' },
-    wow: { mouth: "M11 15 Q12 19 13 15 Q12 14 11 15", brow: "" },
-  }[kind] || { mouth: "M9 16 Q12 19 15 16", brow: "" };
-  const eyeY = kind === "sad" ? 10.5 : 10;
-  return `<svg class="mood-svg" viewBox="0 0 24 24" aria-hidden="true">
-    <circle cx="12" cy="12" r="10" fill="#ffe7a8" stroke="#c48a2a" stroke-width="1.2"/>
-    <circle cx="9" cy="${eyeY}" r="1.1" fill="#4a3f3a"/>
-    <circle cx="15" cy="${eyeY}" r="1.1" fill="#4a3f3a"/>
-    ${face.brow}
-    <path d="${face.mouth}" fill="none" stroke="#4a3f3a" stroke-width="1.4" stroke-linecap="round"/>
-  </svg>`;
+function toHira(s) {
+  return String(s || "")
+    .trim()
+    .replace(/[ァ-ン]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60))
+    .replace(/\s/g, "")
+    .toLowerCase();
+}
+
+function parseWeek(raw) {
+  const t = String(raw || "")
+    .replace(/\s/g, "")
+    .replace(/曜日/g, "")
+    .replace(/ようび/g, "");
+  const one = t.charAt(0);
+  return "日月火水木金土".includes(one) ? one : "";
+}
+
+function keypadHtml(name) {
+  const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "消す", "0"];
+  return `<div class="keypad" data-pad="${name}">${keys
+    .map((k) => `<button type="button" class="key ${k === "消す" ? "wide" : ""}" data-key="${k}">${k}</button>`)
+    .join("")}</div>`;
 }
 
 function shapeTiles(cells, highlight) {
@@ -98,6 +102,7 @@ function startCheck() {
     month: "",
     day: "",
     week: "",
+    moodText: "",
     mem: [],
     phase: "ask",
   };
@@ -116,6 +121,10 @@ function finishCheckItem(ok, domain) {
   game.nums = [];
   game.shapePick = null;
   game.lang = "";
+  game.moodText = "";
+  game.month = "";
+  game.day = "";
+  game.week = "";
   if (game.i >= 6) return finishCheck();
   renderCheckPlay();
 }
@@ -141,7 +150,8 @@ function finishCheck() {
   if (user) saveScreen(user.id, payload);
   game.phase = "done";
   game.result = payload;
-  renderCheckResult();
+  location.hash = "#/brain";
+  renderBrain();
 }
 
 function renderCheckShell(inner, { timer } = {}) {
@@ -170,7 +180,7 @@ function renderCheckIntro() {
     <div class="brain-intro">
       <p class="intro-lead">病院の診断ではありません。いまの調子を見る、お天気予報のようなものです。</p>
       <ol class="intro-steps">
-        <li>ことば・数字・図形を、自分で入力したり押したりします。</li>
+        <li>ことばや数字は、自分で書いて答えます。答えのボタンは出ません。</li>
         <li>各問に約 ${CHECK_SEC} 秒あります。ゆっくりで大丈夫です。</li>
         <li>終わると、今日にぴったりの脳トレに星がつきます。</li>
       </ol>
@@ -195,7 +205,10 @@ function checkTimerHtml() {
 
 function renderCheckPlay() {
   const game = ensureCheck();
-  if (game.phase === "done") return renderCheckResult();
+  if (game.phase === "done") {
+    location.hash = "#/brain";
+    return renderBrain();
+  }
   const n = game.i + 1;
   const body = [
     renderQOrient,
@@ -217,41 +230,26 @@ function renderCheckPlay() {
 }
 
 function renderQOrient() {
-  const months = Array.from({ length: 12 }, (_, i) => String(i + 1));
-  const days = Array.from({ length: 31 }, (_, i) => String(i + 1));
-  const weeks = "日月火水木金土".split("");
   return `
     <h1 class="theme">きょうは、何月何日？</h1>
-    <p class="help">カレンダーを見ずに、数字で書くか、下のボタンで月・日・曜日を選んでください。</p>
-    <p class="check-lab">月（数字）</p>
-    <input class="pill" data-month-in inputmode="numeric" maxlength="2" placeholder="例）9" />
-    <p class="check-lab">日（数字）</p>
-    <input class="pill" data-day-in inputmode="numeric" maxlength="2" placeholder="例）15" />
+    <p class="help">カレンダーを見ずに、自分で数字と曜日を書いてください。</p>
     <p class="check-lab">月</p>
-    <div class="palette" data-pal="month">${months
-      .map((m) => `<button type="button" class="pal" data-v="${m}">${m}</button>`)
-      .join("")}</div>
+    <input class="pill" data-month-in inputmode="numeric" maxlength="2" placeholder="月の数字" />
+    ${keypadHtml("month")}
     <p class="check-lab">日</p>
-    <div class="palette" data-pal="day">${days
-      .map((d) => `<button type="button" class="pal" data-v="${d}">${d}</button>`)
-      .join("")}</div>
+    <input class="pill" data-day-in inputmode="numeric" maxlength="2" placeholder="日の数字" />
+    ${keypadHtml("day")}
     <p class="check-lab">曜日</p>
-    <div class="palette" data-pal="week">${weeks
-      .map((w) => `<button type="button" class="pal" data-v="${w}">${w}曜日</button>`)
-      .join("")}</div>
+    <input class="pill" data-week-in maxlength="4" placeholder="曜日を書く" />
     <button class="primary" type="button" data-check-ok>これで答える</button>
   `;
 }
 
 function renderQLang() {
-  const chips = shuffleList(["いぬ", "いるか", "ねこ", "うま", "いのしし", "とり"]);
   return `
     <h1 class="theme">「い」から始まる<br />動物のなまえ</h1>
-    <p class="help">思い浮かんだら、下に書くか、ことばを押してください。</p>
-    <input class="pill" data-lang-in maxlength="12" placeholder="例）いぬ" />
-    <div class="palette">${chips
-      .map((c) => `<button type="button" class="pal" data-lang="${escapeHtml(c)}">${escapeHtml(c)}</button>`)
-      .join("")}</div>
+    <p class="help">思い出したなまえを、自分で書いてください。</p>
+    <input class="pill" data-lang-in maxlength="12" placeholder="なまえを書く" />
     <button class="primary" type="button" data-check-ok>これで答える</button>
   `;
 }
@@ -269,74 +267,78 @@ function renderQExec() {
 }
 
 function renderQSpace(game) {
-  const opts = [
-    { id: "a", cells: [0, 1, 3] },
-    { id: "b", cells: [0, 1, 2] },
-    { id: "c", cells: [1, 4, 7] },
-    { id: "d", cells: [2, 5, 8] },
-  ];
   return `
-    <h1 class="theme">見本と同じ形はどれ？</h1>
-    <p class="help">上の見本を見て、同じ位置が塗ってあるものを押してください。</p>
+    <h1 class="theme">見本と同じ形をつくる</h1>
+    <p class="help">上の見本を見て、下のマスを自分で押して同じ位置を塗ってください。</p>
     <p class="check-lab">見本</p>
     ${shapeTiles(game.shape)}
-    <div class="shape-choices">${opts
+    <p class="check-lab">あなたの答え</p>
+    <div class="shape-grid play">${[0, 1, 2, 3, 4, 5, 6, 7, 8]
       .map(
-        (o) =>
-          `<button type="button" class="shape-opt" data-shape="${o.id}">${shapeTiles(o.cells)}</button>`
+        (i) =>
+          `<button type="button" class="${(game.picked || []).includes(i) ? "on" : ""}" data-cell="${i}"></button>`
       )
       .join("")}</div>
+    <button class="primary" type="button" data-check-ok>これで答える</button>
   `;
 }
 
 function renderQSocial(game) {
   return `
     <h1 class="theme">この人は、どんな気持ち？</h1>
-    <p class="help">顔を見て、いちばん近い気持ちを押してください。</p>
+    <p class="help">写真の顔を見て、気持ちを自分で書いてください。</p>
     <div class="mood-hero">${moodVisual(game.mood)}</div>
-    <div class="palette">${MOODS.map(
-      (m) => `<button type="button" class="pal wide" data-mood="${m.id}">${m.label}</button>`
-    ).join("")}</div>
+    <input class="pill" data-mood-in maxlength="12" placeholder="気持ちを書く" />
+    <button class="primary" type="button" data-check-ok>これで答える</button>
   `;
 }
 
 function renderQMeaning() {
   const q = ABBREV_QUIZ.find((x) => x.short === "リモコン") || ABBREV_QUIZ[0];
-  const chips = shuffleList(q.choices.slice());
   return `
     <h1 class="theme">「${escapeHtml(q.short)}」は何の略？</h1>
-    <p class="help">思い出した正式名称を書くか、ことばを押してください。</p>
-    <input class="pill" data-lang-in maxlength="24" placeholder="例）リモートコントロール" />
-    <div class="palette">${chips
-      .map((c) => `<button type="button" class="pal" data-lang="${escapeHtml(c)}">${escapeHtml(c)}</button>`)
-      .join("")}</div>
+    <p class="help">もとのことばを、自分で書いてください。</p>
+    <input class="pill" data-lang-in maxlength="24" placeholder="もとのことば" />
     <button class="primary" type="button" data-check-ok>これで答える</button>
   `;
 }
 
+function moodAnswerOk(typed, moodId) {
+  const t = toHira(typed);
+  if (!t) return false;
+  const map = {
+    happy: ["うれしい", "たのしい", "よろこ", "えがお", "わらい", "しあわせ", "嬉"],
+    sad: ["かなしい", "かなし", "なみだ", "ないている", "さびしい", "悲"],
+    angry: ["おこっている", "おこり", "いかり", "むかつく", "はらだち", "怒"],
+    wow: ["おどろいている", "おどろき", "びっくり", "おどろいた", "驚"],
+  };
+  return (map[moodId] || []).some((k) => t.includes(toHira(k)) || toHira(k).includes(t));
+}
+
 function bindCheckQuestion(game) {
   const step = game.i;
-  app.querySelectorAll("[data-pal] .pal").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const pal = btn.parentElement.dataset.pal;
-      app.querySelectorAll(`[data-pal="${pal}"] .pal`).forEach((b) => b.classList.remove("on"));
-      btn.classList.add("on");
-      game[pal] = btn.dataset.v;
+  const bindField = (sel, key) => {
+    app.querySelector(sel)?.addEventListener("input", (e) => {
+      game[key] = e.target.value;
     });
-  });
-  app.querySelector("[data-month-in]")?.addEventListener("input", (e) => {
-    game.month = e.target.value;
-  });
-  app.querySelector("[data-day-in]")?.addEventListener("input", (e) => {
-    game.day = e.target.value;
-  });
-  app.querySelectorAll("[data-lang]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      game.lang = btn.dataset.lang;
-      app.querySelectorAll("[data-lang]").forEach((b) => b.classList.remove("on"));
-      btn.classList.add("on");
-      const inp = app.querySelector("[data-lang-in]");
-      if (inp) inp.value = game.lang;
+  };
+  bindField("[data-month-in]", "month");
+  bindField("[data-day-in]", "day");
+  bindField("[data-week-in]", "week");
+  bindField("[data-lang-in]", "lang");
+  bindField("[data-mood-in]", "moodText");
+  app.querySelectorAll("[data-pad]").forEach((pad) => {
+    pad.querySelectorAll("[data-key]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const name = pad.dataset.pad;
+        const key = btn.dataset.key;
+        let cur = String(game[name] || "");
+        if (key === "消す") cur = cur.slice(0, -1);
+        else if (cur.length < 2) cur += key;
+        game[name] = cur;
+        const inp = app.querySelector(name === "month" ? "[data-month-in]" : "[data-day-in]");
+        if (inp) inp.value = game[name];
+      });
     });
   });
   app.querySelectorAll("[data-num]").forEach((btn) => {
@@ -355,25 +357,14 @@ function bindCheckQuestion(game) {
       if (game.nums.length === 5) finishCheckItem(true, "exec");
     });
   });
-  app.querySelectorAll("[data-shape]").forEach((btn) => {
+  app.querySelectorAll("[data-cell]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const ok = btn.dataset.shape === "a";
-      finishCheckItem(ok, "space");
-    });
-  });
-  app.querySelectorAll("[data-mood]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      finishCheckItem(btn.dataset.mood === game.mood, "social");
-    });
-  });
-  app.querySelectorAll("[data-mem]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const w = btn.dataset.mem;
-      if (game.mem.includes(w)) {
-        game.mem = game.mem.filter((x) => x !== w);
+      const i = Number(btn.dataset.cell);
+      if (game.picked.includes(i)) {
+        game.picked = game.picked.filter((x) => x !== i);
         btn.classList.remove("on");
-      } else if (game.mem.length < 3) {
-        game.mem.push(w);
+      } else {
+        game.picked.push(i);
         btn.classList.add("on");
       }
     });
@@ -384,54 +375,38 @@ function bindCheckQuestion(game) {
       const ok =
         Number(game.month) === d.getMonth() + 1 &&
         Number(game.day) === d.getDate() &&
-        game.week === weekLabel(d);
+        parseWeek(game.week) === weekLabel(d);
       finishCheckItem(ok, "memory");
       return;
     }
     if (step === 1) {
-      const raw = String(game.lang || "").trim().replace(/\s/g, "").toLowerCase();
-      const ok = I_ANIMAL_OK.some((a) => a.replace(/\s/g, "").toLowerCase() === raw);
-      finishCheckItem(ok, "language");
+      finishCheckItem(I_ANIMAL_OK.some((a) => toHira(a) === toHira(game.lang)), "language");
+      return;
+    }
+    if (step === 3) {
+      const a = (game.picked || []).slice().sort((x, y) => x - y).join(",");
+      const b = game.shape.slice().sort((x, y) => x - y).join(",");
+      finishCheckItem(a === b, "space");
+      return;
+    }
+    if (step === 4) {
+      finishCheckItem(moodAnswerOk(game.moodText, game.mood), "social");
       return;
     }
     if (step === 5) {
       const q = ABBREV_QUIZ.find((x) => x.short === "リモコン") || ABBREV_QUIZ[0];
-      const ok = quizMatches(game.lang, q);
-      finishCheckItem(ok, "meaning");
+      finishCheckItem(quizMatches(game.lang, q), "meaning");
     }
   });
-}
-
-function renderCheckResult() {
-  stopCheckTimer();
-  const user = currentUser();
-  const row = (user && todayScreen(user.id)) || ensureCheck().result || {};
-  const rec = BRAIN_GAMES.find((g) => g.id === row.rec) || BRAIN_GAMES[0];
-  const tired = BRAIN_GAMES.filter((g) => (row.tired || []).includes(g.id));
-  const note = tired.length
-    ? tired.map((g) => g.skill).join("、")
-    : "どの項目も、今日はおだやかです";
-  renderCheckShell(`
-    <p class="kicker">今日の脳の元気予報</p>
-    <h1 class="theme">チェックおわり</h1>
-    <div class="brain-intro">
-      <p class="intro-lead">これは診断ではありません。今日の調子の目安です。</p>
-      <p class="help">${escapeHtml(note)} ${tired.length ? "が、少しお疲れ気味かもしれません。" : ""}</p>
-      <p class="check-lab">今日のあなたにぴったりの脳トレ</p>
-      <a class="brain-card rec" href="#/brain/${rec.id}">
-        <b>★ おすすめ　${escapeHtml(rec.title)}</b>
-        <span>${escapeHtml(rec.skill)}　／　${escapeHtml(rec.blurb)}</span>
-      </a>
-      <a class="primary" href="#/brain/${rec.id}">この脳トレを見る</a>
-      <a class="ghost" href="#/brain">6つの脳トレ一覧</a>
-    </div>
-  `);
 }
 
 function renderCheck() {
   const playing = brainPlaying();
   const game = window.__check;
-  if (playing && game && game.phase === "done") return renderCheckResult();
+  if (playing && game && game.phase === "done") {
+    location.hash = "#/brain";
+    return renderBrain();
+  }
   if (playing && game) return renderCheckPlay();
   return renderCheckIntro();
 }

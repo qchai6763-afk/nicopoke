@@ -1343,8 +1343,30 @@ a.ghost {
 }
 
 .brain-card.rec {
-  box-shadow: 0 8px 0 #f0c14a;
-  outline: 3px solid #f0c14a;
+  background: linear-gradient(180deg, #fff6c2 0%, #ffe07a 100%);
+  box-shadow: 0 10px 0 #c4122f;
+  outline: 5px solid #c4122f;
+  outline-offset: 2px;
+  padding: 18px 18px 26px;
+  margin-bottom: 22px;
+  transform: scale(1.02);
+}
+
+.rec-badge {
+  display: inline-block;
+  background: #c4122f;
+  color: #fff;
+  font-style: normal;
+  font-weight: 900;
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  padding: 8px 14px;
+  border-radius: 999px;
+  margin-bottom: 10px;
+}
+
+.brain-card.rec b {
+  font-size: 1.55rem;
 }
 
 a.notice.check-cta {
@@ -1800,6 +1822,29 @@ a.notice.check-cta {
 
 .pal.on {
   background: #ffe07a;
+}
+
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 8px 0 16px;
+}
+
+.key {
+  min-height: 56px;
+  border: 0;
+  border-radius: 14px;
+  background: #fff;
+  font-size: 1.35rem;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 3px 0 #ffd0dc;
+}
+
+.key.wide {
+  grid-column: span 2;
+  font-size: 1.05rem;
 }
 
 .num-scatter {

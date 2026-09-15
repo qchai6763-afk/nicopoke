@@ -258,19 +258,23 @@ function renderBrain() {
   if (!screen) return renderCheckIntro();
 
   const rec = screen.rec;
+  const ordered = BRAIN_GAMES.slice().sort((a, b) => (a.id === rec ? -1 : b.id === rec ? 1 : 0));
   app.innerHTML = chrome(
     `
       <p class="kicker">今日の脳トレ</p>
       <h1 class="theme">6つの息抜き</h1>
-      <p class="help">診断ではありません。チェックの結果から、星のついたものが今日のおすすめです。</p>
+      <p class="help">診断ではありません。いちばん上の金色のカードが、今日のおすすめです。</p>
       <a class="ghost" href="#/brain/check">元気予報をもう一度</a>
-      ${BRAIN_GAMES.map((g) => {
-        const star = g.id === rec;
-        return `<a class="brain-card ${star ? "rec" : ""}" href="#/brain/${g.id}">
-          <b>${star ? "★ おすすめ　" : ""}${escapeHtml(g.title)}</b>
+      ${ordered
+        .map((g) => {
+          const star = g.id === rec;
+          return `<a class="brain-card ${star ? "rec" : ""}" href="#/brain/${g.id}">
+          ${star ? `<em class="rec-badge">★ いまおすすめ！</em>` : ""}
+          <b>${escapeHtml(g.title)}</b>
           <span>${escapeHtml(g.skill)}　／　${escapeHtml(g.blurb)}</span>
         </a>`;
-      }).join("")}
+        })
+        .join("")}
       <a class="ghost" href="#/today">今日の写真にもどる</a>
     `,
     "brain"
