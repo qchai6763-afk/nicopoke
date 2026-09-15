@@ -123,6 +123,7 @@ function renderBrain() {
   const kind = brainKind();
   if (kind === "memory") return renderMemory();
   if (kind === "kana") return renderKana();
+  if (kind === "quiz") return renderQuiz();
 
   app.innerHTML = chrome(
     `
@@ -136,6 +137,10 @@ function renderBrain() {
       <a class="brain-card" href="#/brain/kana">
         <b>ひらがな探し</b>
         <span>マスの中から、たくさんのことばを見つけます。</span>
+      </a>
+      <a class="brain-card quiz-card" href="#/brain/quiz">
+        <b>略語あてクイズ</b>
+        <span>テレビ番組風に、略の正式名称を当てます。</span>
       </a>
       <a class="ghost" href="#/today">今日の写真にもどる</a>
     `,
@@ -304,4 +309,125 @@ function renderKana() {
     renderKana();
   });
 }
+
+function quizBeep(ok) {
+  try {
+    const ctx = new AudioContext();
+    const now = ctx.currentTime;
+    const beep = (freq, t, len) => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "square";
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(0.08, now + t);
+      g.gain.exponentialRampToValueAtTime(0.001, now + t + len);
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start(now + t);
+      o.stop(now + t + len);
+    };
+    if (ok) {
+      beep(880, 0, 0.16);
+      beep(1174, 0.18, 0.22);
+    } else {
+      beep(196, 0, 0.35);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function startQuiz() {
+  const items = shuffleList(ABBREV_QUIZ).map((q) => ({
+    short: q.short,
+    answer: q.answer,
+    choices: shuffleList(q.choices.slice()),
+  }));
+  window.__quiz = { items, i: 0, picked: null, score: 0 };
+}
+
+function ensureQuiz() {
+  if (!window.__quiz) startQuiz();
+  return window.__quiz;
+}
+
+function renderQuiz() {
+  const game = ensureQuiz();
+  const total = game.items.length;
+  if (game.i >= total) {
+    app.innerHTML = chrome(
+      `
+        <a class="back-link" href="#/brain">← 脳トレ一覧</a>
+        <div class="quiz-show">
+          <div class="quiz-ep">終了</div>
+          <p class="quiz-q">本日の成績</p>
+          <p class="quiz-score">${game.score} / ${total} 問 正解</p>
+          <p class="quiz-host">ありがとうございました。また次回もよろしくお願いいたします。</p>
+          <button class="quiz-next" type="button" data-quiz-again>もう一度チャレンジ</button>
+        </div>
+      `,
+      "brain"
+    );
+    bindTop();
+    app.querySelector("[data-quiz-again]")?.addEventListener("click", () => {
+      startQuiz();
+      renderQuiz();
+    });
+    return;
+  }
+  const q = game.items[game.i];
+  const n = game.i + 1;
+  const judged = game.picked != null;
+  const ok = judged && game.picked === q.answer;
+  app.innerHTML = chrome(
+    `
+      <a class="back-link" href="#/brain">← 脳トレ一覧</a>
+      <div class="quiz-show">
+        <div class="quiz-ep">第 ${n} 問　／　全 ${total} 問</div>
+        <p class="quiz-q">「${escapeHtml(q.short)}」は<br />何の略？</p>
+        <div class="quiz-choices">
+          ${q.choices
+            .map((c, i) => {
+              const letter = ["A", "B", "C"][i];
+              let cls = "quiz-opt";
+              if (judged && c === q.answer) cls += " yes";
+              if (judged && c === game.picked && c !== q.answer) cls += " no";
+              return `<button type="button" class="${cls}" data-quiz="${escapeHtml(c)}" ${
+                judged ? "disabled" : ""
+              }><em>${letter}</em>${escapeHtml(c)}</button>`;
+            })
+            .join("")}
+        </div>
+        ${
+          judged
+            ? `<div class="quiz-result ${ok ? "ok" : "ng"}">
+                 <b>${ok ? QUIZ_OK[game.i % QUIZ_OK.length] : QUIZ_NG[game.i % QUIZ_NG.length]}</b>
+                 <p>正解は「${escapeHtml(q.answer)}」</p>
+               </div>
+               <button class="quiz-next" type="button" data-quiz-next>${
+                 n === total ? "成績を見る" : "次の問題へ"
+               }</button>`
+            : `<p class="quiz-hint">3つのうち、正しい正式名称を押してください。</p>`
+        }
+      </div>
+    `,
+    "brain"
+  );
+  bindTop();
+  app.querySelectorAll("[data-quiz]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (game.picked != null) return;
+      game.picked = btn.dataset.quiz;
+      if (game.picked === q.answer) game.score += 1;
+      quizBeep(game.picked === q.answer);
+      renderQuiz();
+    });
+  });
+  app.querySelector("[data-quiz-next]")?.addEventListener("click", () => {
+    game.i += 1;
+    game.picked = null;
+    renderQuiz();
+  });
+}
+
 

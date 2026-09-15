@@ -1342,6 +1342,143 @@ a.ghost {
   font-weight: 600;
 }
 
+.brain-card.quiz-card {
+  background: #123a8c;
+  color: #fff;
+  box-shadow: 0 8px 0 #8b1e1e;
+}
+
+.brain-card.quiz-card span {
+  color: #ffe07a;
+}
+
+.quiz-show {
+  background: #0b2a6b;
+  color: #fff;
+  border: 6px solid #d4a017;
+  border-radius: 18px;
+  padding: 18px 14px 20px;
+  margin: 8px 0 16px;
+}
+
+.quiz-ep {
+  display: inline-block;
+  background: #c4122f;
+  color: #fff;
+  font-weight: 900;
+  font-size: 1.15rem;
+  padding: 8px 16px;
+  border-radius: 8px;
+  letter-spacing: 0.06em;
+}
+
+.quiz-q {
+  font-size: 1.55rem;
+  font-weight: 900;
+  line-height: 1.4;
+  color: #fffbe6;
+  margin: 16px 0 18px;
+  text-align: center;
+}
+
+.quiz-choices {
+  display: grid;
+  gap: 10px;
+}
+
+.quiz-opt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  border: 3px solid #ffe07a;
+  border-radius: 12px;
+  background: #1a4cb3;
+  color: #fff;
+  font-weight: 800;
+  font-size: 1.05rem;
+  text-align: left;
+  cursor: pointer;
+  padding: 8px 12px;
+}
+
+.quiz-opt em {
+  flex: 0 0 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  background: #ffe07a;
+  color: #0b2a6b;
+  border-radius: 8px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.quiz-opt.yes {
+  background: #12823a;
+  border-color: #fff;
+}
+
+.quiz-opt.no {
+  background: #8b1e1e;
+  border-color: #ffb4b4;
+}
+
+.quiz-opt:disabled {
+  cursor: default;
+}
+
+.quiz-result {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.quiz-result.ok {
+  background: #ffe07a;
+  color: #0b2a6b;
+}
+
+.quiz-result.ng {
+  background: #8b1e1e;
+  color: #fff;
+}
+
+.quiz-result b {
+  display: block;
+  font-size: 1.25rem;
+  margin-bottom: 6px;
+}
+
+.quiz-next {
+  width: 100%;
+  margin-top: 12px;
+  min-height: 60px;
+  border: 0;
+  border-radius: 12px;
+  background: #ffe07a;
+  color: #0b2a6b;
+  font-weight: 900;
+  font-size: 1.15rem;
+  cursor: pointer;
+}
+
+.quiz-hint,
+.quiz-host {
+  text-align: center;
+  font-weight: 700;
+  color: #ffe07a;
+}
+
+.quiz-score {
+  text-align: center;
+  font-size: 2rem;
+  font-weight: 900;
+  color: #ffe07a;
+  margin: 8px 0 16px;
+}
+
 .back-link {
   display: inline-block;
   font-weight: 800;
