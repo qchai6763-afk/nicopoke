@@ -414,6 +414,11 @@ function renderToday() {
     `
       ${statusRow(group, user.id)}
       ${riskNote}
+      ${
+        todayScreen(user.id)
+          ? ""
+          : `<a class="notice check-cta" href="#/brain/check">今日の脳の元気予報をしませんか<small>診断ではありません。文字や数字を自分で入れる、やさしい6問です。</small></a>`
+      }
       <div class="streak ${streak ? "pulse" : ""}">${escapeHtml(streakLabel(streak))}</div>
       <p class="kicker">${formatDateLabel(todayKey())}　今日の一枚</p>
       ${

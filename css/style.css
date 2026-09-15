@@ -1342,6 +1342,17 @@ a.ghost {
   font-weight: 600;
 }
 
+.brain-card.rec {
+  box-shadow: 0 8px 0 #f0c14a;
+  outline: 3px solid #f0c14a;
+}
+
+a.notice.check-cta {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+
 .brain-intro {
   background: #fff;
   border-radius: 22px;
@@ -1732,4 +1743,147 @@ a.ghost {
 .word-list span.got {
   background: #8ee3c4;
   text-decoration: line-through;
+}
+
+.check-time {
+  margin: 8px 0 16px;
+}
+
+.check-track {
+  height: 14px;
+  background: #ffe8d6;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.check-track i {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: #7dcea0;
+  border-radius: 999px;
+}
+
+.check-time span {
+  display: block;
+  margin-top: 6px;
+  font-weight: 800;
+  color: #7a5a48;
+}
+
+.check-lab {
+  font-weight: 800;
+  margin: 12px 0 6px;
+}
+
+.palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.pal {
+  min-height: 48px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 14px;
+  background: #fff;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 3px 0 #ffd0dc;
+}
+
+.pal.wide {
+  flex: 1 1 42%;
+}
+
+.pal.on {
+  background: #ffe07a;
+}
+
+.num-scatter {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 12px 0 18px;
+}
+
+.num-dot {
+  min-height: 64px;
+  border: 0;
+  border-radius: 18px;
+  background: #fff;
+  font-size: 1.5rem;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #ffd0dc;
+}
+
+.num-dot.on {
+  background: #8ee3c4;
+}
+
+.shape-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: min(240px, 100%);
+  margin: 8px auto 16px;
+}
+
+.shape-grid span,
+.shape-grid.play button {
+  aspect-ratio: 1;
+  min-height: 52px;
+  border-radius: 12px;
+  background: #f3e6df;
+  border: 0;
+  display: block;
+}
+
+.shape-grid span.on,
+.shape-grid.play button.on {
+  background: #5b8def;
+}
+
+.shape-choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.shape-opt {
+  background: #fff;
+  border: 0;
+  border-radius: 16px;
+  padding: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 0 #ffd0dc;
+}
+
+.mood-hero {
+  display: grid;
+  place-items: center;
+  margin: 8px 0 16px;
+}
+
+.mood-svg {
+  width: min(220px, 70vw);
+  height: auto;
+}
+
+.mem-words {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+
+.mem-words b {
+  background: #fff;
+  border-radius: 16px;
+  padding: 14px 18px;
+  font-size: 1.3rem;
 }

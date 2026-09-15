@@ -151,3 +151,61 @@ const ABBREV_QUIZ = [
 
 const QUIZ_OK = ["ピンポン！よくご存じです！", "すばらしい！その通りです！", "正解！お見事です！", "よくできました。流石です！"];
 const QUIZ_NG = ["ブブー。もう一度お考えを。", "残念…おしい！", "違います。正解はこちらです。"];
+
+const BRAIN_GAMES = [
+  {
+    id: "memory",
+    domain: "memory",
+    title: "思い出神経衰弱",
+    skill: "記憶・見当識",
+    blurb: "家族の写真のペアを探します。",
+  },
+  {
+    id: "kana",
+    domain: "language",
+    title: "ひらがな探し",
+    skill: "言語",
+    blurb: "マスを1つずつ押して、ことばをつなぎます。",
+  },
+  {
+    id: "quiz",
+    domain: "meaning",
+    title: "略語あてクイズ",
+    skill: "ことばの意味",
+    blurb: "なじみの略が、もともとは何かを当てます。",
+  },
+  {
+    id: "order",
+    domain: "exec",
+    title: "数字タッチ",
+    skill: "実行・注意",
+    blurb: "バラバラの数字を、小さい順に押します。",
+  },
+  {
+    id: "space",
+    domain: "space",
+    title: "かたち合わせ",
+    skill: "視空間",
+    blurb: "見本と同じ位置のマスを選びます。",
+  },
+  {
+    id: "mood",
+    domain: "social",
+    title: "きもち読み",
+    skill: "社会的認知",
+    blurb: "顔を見て、今の気持ちを選びます。",
+  },
+];
+
+const I_ANIMALS = ["いぬ", "いのしし", "いるか", "いたち", "いぐあな", "いそぎんちゃく", "いえばと"];
+const I_ANIMAL_OK = ["いぬ", "犬", "イヌ", "いのしし", "イノシシ", "猪", "いるか", "イルカ", "いたち", "イタチ", "いぐあな", "イグアナ", "いそぎんちゃく", "イソギンチャク"];
+
+const CHECK_WORDS = ["さくら", "かさ", "ねこ"];
+const CHECK_WORD_FOILS = ["くるま", "やま", "つくえ"];
+
+const MOODS = [
+  { id: "happy", label: "うれしい" },
+  { id: "sad", label: "かなしい" },
+  { id: "angry", label: "おこっている" },
+  { id: "wow", label: "おどろいている" },
+];

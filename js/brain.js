@@ -154,10 +154,47 @@ const BRAIN_INTRO = {
       "ちがう答えを押しても続けられます。選んだ間違いは画面に残ります。",
     ],
   },
+  order: {
+    title: "数字タッチ",
+    img: "img/brain-intro-order.png",
+    alt: "数字を小さい順に指で押しているイラスト",
+    lead: "バラバラの数字を、1から順にポチポチ押します。",
+    steps: [
+      "いちばん小さい数字から探します。",
+      "まちがえたら、また1からやりなおします。",
+      "最後の数字まで押せたら終わりです。",
+    ],
+  },
+  space: {
+    title: "かたち合わせ",
+    img: "img/brain-intro-space.png",
+    alt: "見本のマスと同じ位置を選んでいるイラスト",
+    lead: "見本と同じマスを、同じ位置で押します。",
+    steps: [
+      "上の見本を、よく見てください。",
+      "下の空のマスを押して、同じ形をつくります。",
+      "できたら「できた」を押します。何回か続きます。",
+    ],
+  },
+  mood: {
+    title: "きもち読み",
+    img: "img/brain-intro-mood.png",
+    alt: "顔を見て気持ちのマークを選んでいるイラスト",
+    lead: "顔を見て、いまの気持ちに近いものを押します。",
+    steps: [
+      "大きな顔を、ゆっくり見てください。",
+      "うれしい・かなしい・おこっている・おどろいている、から選びます。",
+      "何問か続きます。正解でもまちがいでも、次へ進みます。",
+    ],
+  },
 };
 
 function renderBrainIntro(kind) {
   const info = BRAIN_INTRO[kind];
+  if (!info) {
+    go("/brain");
+    return;
+  }
   app.innerHTML = chrome(
     `
       <a class="back-link" href="#/brain">← 脳トレ一覧</a>
@@ -189,6 +226,8 @@ function renderBrain() {
   }
   const kind = brainKind();
   const playing = brainPlaying();
+  if (kind !== "check") stopCheckTimer();
+  if (kind === "check") return renderCheck();
   if (kind === "memory") {
     if (!playing) return renderBrainIntro("memory");
     return renderMemory();
@@ -201,24 +240,37 @@ function renderBrain() {
     if (!playing) return renderBrainIntro("quiz");
     return renderQuiz();
   }
+  if (kind === "order") {
+    if (!playing) return renderBrainIntro("order");
+    return renderOrder();
+  }
+  if (kind === "space") {
+    if (!playing) return renderBrainIntro("space");
+    return renderSpace();
+  }
+  if (kind === "mood") {
+    if (!playing) return renderBrainIntro("mood");
+    return renderMood();
+  }
 
+  const user = currentUser();
+  const screen = todayScreen(user.id);
+  if (!screen) return renderCheckIntro();
+
+  const rec = screen.rec;
   app.innerHTML = chrome(
     `
-      <p class="kicker">おまけ・息抜き</p>
-      <h1 class="theme">脳トレ</h1>
-      <p class="help">短い時間で頭をほぐすゲームです。今日の写真とは別です。</p>
-      <a class="brain-card" href="#/brain/memory">
-        <b>思い出神経衰弱</b>
-        <span>家族が送った写真のペアを探します。</span>
-      </a>
-      <a class="brain-card" href="#/brain/kana">
-        <b>ひらがな探し</b>
-        <span>マスの中から、たくさんのことばを見つけます。</span>
-      </a>
-      <a class="brain-card" href="#/brain/quiz">
-        <b>略語あてクイズ</b>
-        <span>テレビ番組風に、略の正式名称を当てます。</span>
-      </a>
+      <p class="kicker">今日の脳トレ</p>
+      <h1 class="theme">6つの息抜き</h1>
+      <p class="help">診断ではありません。チェックの結果から、星のついたものが今日のおすすめです。</p>
+      <a class="ghost" href="#/brain/check">元気予報をもう一度</a>
+      ${BRAIN_GAMES.map((g) => {
+        const star = g.id === rec;
+        return `<a class="brain-card ${star ? "rec" : ""}" href="#/brain/${g.id}">
+          <b>${star ? "★ おすすめ　" : ""}${escapeHtml(g.title)}</b>
+          <span>${escapeHtml(g.skill)}　／　${escapeHtml(g.blurb)}</span>
+        </a>`;
+      }).join("")}
       <a class="ghost" href="#/today">今日の写真にもどる</a>
     `,
     "brain"
@@ -570,5 +622,167 @@ function renderQuiz() {
     renderQuiz();
   });
 }
+
+function ensureOrder() {
+  if (!window.__order || window.__order.won) {
+    window.__order = { next: 1, max: 8, won: false, layout: shuffleList([1, 2, 3, 4, 5, 6, 7, 8]) };
+  }
+  return window.__order;
+}
+
+function renderOrder() {
+  const game = ensureOrder();
+  app.innerHTML = chrome(
+    `
+      <a class="back-link" href="#/brain">← 脳トレ一覧</a>
+      <p class="kicker">数字タッチ</p>
+      <h1 class="theme">${game.won ? "全部押せました！" : `つぎは ${game.next}`}</h1>
+      <p class="help">1から ${game.max} まで、小さい順に押してください。まちがえたら 1 からやり直しです。</p>
+      <div class="num-scatter">${game.layout
+        .map((n) => {
+          const done = n < game.next || game.won;
+          return `<button type="button" class="num-dot ${done ? "on" : ""}" data-num="${n}" ${
+            game.won ? "disabled" : ""
+          }>${n}</button>`;
+        })
+        .join("")}</div>
+      <button class="ghost" type="button" data-order-new>もう一度</button>
+    `,
+    "brain"
+  );
+  bindTop();
+  app.querySelectorAll("[data-num]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (game.won) return;
+      const n = Number(btn.dataset.num);
+      if (n !== game.next) {
+        game.next = 1;
+        renderOrder();
+        return;
+      }
+      game.next += 1;
+      if (game.next > game.max) game.won = true;
+      renderOrder();
+    });
+  });
+  app.querySelector("[data-order-new]")?.addEventListener("click", () => {
+    window.__order = null;
+    renderOrder();
+  });
+}
+
+function randomPattern() {
+  const cells = shuffleList([0, 1, 2, 3, 4, 5, 6, 7, 8]).slice(0, 4);
+  return cells.sort((a, b) => a - b);
+}
+
+function ensureSpace() {
+  if (!window.__space) {
+    window.__space = { round: 0, total: 3, target: randomPattern(), pick: [], ok: 0 };
+  }
+  return window.__space;
+}
+
+function renderSpace() {
+  const game = ensureSpace();
+  const done = game.round >= game.total;
+  app.innerHTML = chrome(
+    `
+      <a class="back-link" href="#/brain">← 脳トレ一覧</a>
+      <p class="kicker">かたち合わせ</p>
+      <h1 class="theme">${done ? `${game.ok} / ${game.total} 問 できました` : `見本 ${game.round + 1} / ${game.total}`}</h1>
+      ${
+        done
+          ? `<button class="primary" type="button" data-space-new>もう一度</button>`
+          : `<p class="help">上の見本と同じマスを、下で押してください。もう一度押すと消えます。</p>
+             <p class="check-lab">見本</p>
+             ${shapeTiles(game.target)}
+             <p class="check-lab">あなたの答え</p>
+             <div class="shape-grid play">${[0, 1, 2, 3, 4, 5, 6, 7, 8]
+               .map(
+                 (i) =>
+                   `<button type="button" class="${game.pick.includes(i) ? "on" : ""}" data-cell="${i}"></button>`
+               )
+               .join("")}</div>
+             <button class="primary" type="button" data-space-ok>できた</button>`
+      }
+    `,
+    "brain"
+  );
+  bindTop();
+  app.querySelectorAll("[data-cell]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const i = Number(btn.dataset.cell);
+      if (game.pick.includes(i)) game.pick = game.pick.filter((x) => x !== i);
+      else game.pick.push(i);
+      renderSpace();
+    });
+  });
+  app.querySelector("[data-space-ok]")?.addEventListener("click", () => {
+    const a = game.pick.slice().sort((x, y) => x - y).join(",");
+    const b = game.target.slice().sort((x, y) => x - y).join(",");
+    if (a === b) game.ok += 1;
+    game.round += 1;
+    game.target = randomPattern();
+    game.pick = [];
+    renderSpace();
+  });
+  app.querySelector("[data-space-new]")?.addEventListener("click", () => {
+    window.__space = null;
+    renderSpace();
+  });
+}
+
+function ensureMood() {
+  if (!window.__mood) {
+    const qs = shuffleList(MOODS.concat(MOODS)).slice(0, 6);
+    window.__mood = { i: 0, qs, score: 0 };
+  }
+  return window.__mood;
+}
+
+function renderMood() {
+  const game = ensureMood();
+  if (game.i >= game.qs.length) {
+    app.innerHTML = chrome(
+      `
+        <a class="back-link" href="#/brain">← 脳トレ一覧</a>
+        <p class="kicker">きもち読み</p>
+        <h1 class="theme">${game.score} / ${game.qs.length} 問</h1>
+        <p class="help">顔と気持ちを、ゆっくり合わせる練習です。</p>
+        <button class="primary" type="button" data-mood-new>もう一度</button>
+      `,
+      "brain"
+    );
+    bindTop();
+    app.querySelector("[data-mood-new]")?.addEventListener("click", () => {
+      window.__mood = null;
+      renderMood();
+    });
+    return;
+  }
+  const q = game.qs[game.i];
+  app.innerHTML = chrome(
+    `
+      <a class="back-link" href="#/brain">← 脳トレ一覧</a>
+      <p class="kicker">きもち読み　${game.i + 1} / ${game.qs.length}</p>
+      <h1 class="theme">この人は、どんな気持ち？</h1>
+      <div class="mood-hero">${moodSvg(q.id)}</div>
+      <div class="palette">${MOODS.map(
+        (m) => `<button type="button" class="pal wide" data-mood="${m.id}">${m.label}</button>`
+      ).join("")}</div>
+    `,
+    "brain"
+  );
+  bindTop();
+  app.querySelectorAll("[data-mood]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.dataset.mood === q.id) game.score += 1;
+      game.i += 1;
+      renderMood();
+    });
+  });
+}
+
 
 
