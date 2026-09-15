@@ -1,5 +1,5 @@
 const SCREEN_KEY = "nicopoke-screen-v1";
-const CHECK_SEC = 40;
+const CHECK_SECS = [30, 35, 10, 10, 25, 30];
 
 function loadScreens() {
   try {
@@ -29,10 +29,10 @@ function stopCheckTimer() {
   }
 }
 
-function startCheckTimer(onExpire) {
+function startCheckTimer(seconds, onExpire) {
   stopCheckTimer();
   const started = Date.now();
-  const total = CHECK_SEC * 1000;
+  const total = Math.max(1, Number(seconds) || 30) * 1000;
   const bar = () => app.querySelector("[data-check-bar]");
   const lab = () => app.querySelector("[data-check-sec]");
   const paint = () => {
@@ -102,7 +102,9 @@ function startCheck() {
     abbrev: shuffleList(ABBREV_QUIZ)[0],
     shape: [0, 1, 3],
     shapePick: null,
+    animalSet: shuffleList(ANIMAL_SETS)[0],
     lang: "",
+    lang2: "",
     month: "",
     day: "",
     week: "",
@@ -125,6 +127,7 @@ function finishCheckItem(ok, domain) {
   game.nums = [];
   game.shapePick = null;
   game.lang = "";
+  game.lang2 = "";
   game.moodText = "";
   game.month = "";
   game.day = "";
@@ -154,8 +157,8 @@ function finishCheck() {
   if (user) saveScreen(user.id, payload);
   game.phase = "done";
   game.result = payload;
-  location.hash = "#/brain";
-  renderBrain();
+  location.hash = "#/brain/check/result";
+  renderCheckResult();
 }
 
 function renderCheckShell(inner, { timer } = {}) {
@@ -168,9 +171,11 @@ function renderCheckShell(inner, { timer } = {}) {
   );
   bindTop();
   if (timer) {
-    startCheckTimer(() => {
-      const game = ensureCheck();
-      const domain = ["memory", "language", "exec", "space", "social", "meaning"][game.i];
+    const game = ensureCheck();
+    const sec = CHECK_SECS[game.i] || 30;
+    startCheckTimer(sec, () => {
+      const cur = ensureCheck();
+      const domain = ["memory", "language", "exec", "space", "social", "meaning"][cur.i];
       finishCheckItem(false, domain);
     });
   }
@@ -184,9 +189,9 @@ function renderCheckIntro() {
     <div class="brain-intro">
       <p class="intro-lead">病院の診断ではありません。いまの調子を見る、お天気予報のようなものです。</p>
       <ol class="intro-steps">
-        <li>ことばや数字は、自分で書いて答えます。答えのボタンは出ません。</li>
-        <li>各問に約 ${CHECK_SEC} 秒あります。ゆっくりで大丈夫です。</li>
-        <li>終わると、今日にぴったりの脳トレに星がつきます。</li>
+        <li>ことばや数字は、自分で書いて答えます。曜日はボタンで選べます。</li>
+        <li>問題ごとに時間がちがいます。数字ならべと形合わせは 10 秒です。</li>
+        <li>終わると、今日の元気予報の結果とおすすめが出ます。</li>
       </ol>
       <button class="primary" type="button" data-check-go>チェックをはじめる</button>
       <button class="ghost" type="button" data-check-later>先に写真を見る</button>
@@ -209,10 +214,7 @@ function checkTimerHtml() {
 
 function renderCheckPlay() {
   const game = ensureCheck();
-  if (game.phase === "done") {
-    location.hash = "#/brain";
-    return renderBrain();
-  }
+  if (game.phase === "done") return renderCheckResult();
   const n = game.i + 1;
   const body = [
     renderQOrient,
@@ -234,9 +236,10 @@ function renderCheckPlay() {
 }
 
 function renderQOrient() {
+  const weeks = "日月火水木金土".split("");
   return `
     <h1 class="theme">きょうは、何月何日？</h1>
-    <p class="help">カレンダーを見ずに、自分で数字と曜日を書いてください。</p>
+    <p class="help">カレンダーを見ずに、月と日を書いて、曜日を押してください。</p>
     <p class="check-lab">月</p>
     <input class="pill" data-month-in inputmode="numeric" maxlength="2" placeholder="月の数字" />
     ${keypadHtml("month")}
@@ -244,16 +247,22 @@ function renderQOrient() {
     <input class="pill" data-day-in inputmode="numeric" maxlength="2" placeholder="日の数字" />
     ${keypadHtml("day")}
     <p class="check-lab">曜日</p>
-    <input class="pill" data-week-in maxlength="4" placeholder="曜日を書く" />
+    <div class="palette week-pal">${weeks
+      .map((w) => `<button type="button" class="pal" data-week="${w}">${w}曜日</button>`)
+      .join("")}</div>
     <button class="primary" type="button" data-check-ok>これで答える</button>
   `;
 }
 
-function renderQLang() {
+function renderQLang(game) {
+  const set = game.animalSet || ANIMAL_SETS[0];
   return `
-    <h1 class="theme">「い」から始まる<br />動物のなまえ</h1>
-    <p class="help">思い出したなまえを、自分で書いてください。</p>
+    <h1 class="theme">「${escapeHtml(set.kana)}」から始まる<br />動物を 2つ</h1>
+    <p class="help">ちがう動物を、2つ自分で書いてください。</p>
+    <p class="check-lab">1つ目</p>
     <input class="pill" data-lang-in maxlength="12" placeholder="なまえを書く" />
+    <p class="check-lab">2つ目</p>
+    <input class="pill" data-lang2-in maxlength="12" placeholder="もうひとつ書く" />
     <button class="primary" type="button" data-check-ok>これで答える</button>
   `;
 }
@@ -316,16 +325,17 @@ function renderQMeaning(game) {
   `;
 }
 
-function moodAnswerOk(typed, moodId) {
+function animalKey(typed, set) {
   const t = toHira(typed);
-  if (!t) return false;
-  const map = {
-    happy: ["うれしい", "たのしい", "よろこ", "えがお", "わらい", "しあわせ", "嬉"],
-    sad: ["かなしい", "かなし", "なみだ", "ないている", "さびしい", "悲"],
-    angry: ["おこっている", "おこり", "いかり", "むかつく", "はらだち", "怒"],
-    wow: ["おどろいている", "おどろき", "びっくり", "おどろいた", "驚"],
-  };
-  return (map[moodId] || []).some((k) => t.includes(toHira(k)) || toHira(k).includes(t));
+  if (!t) return "";
+  const hit = (set.items || []).find((item) => item.ok.some((a) => toHira(a) === t));
+  return hit ? hit.key : "";
+}
+
+function twoAnimalsOk(a, b, set) {
+  const k1 = animalKey(a, set);
+  const k2 = animalKey(b, set);
+  return Boolean(k1 && k2 && k1 !== k2);
 }
 
 function bindCheckQuestion(game) {
@@ -337,8 +347,14 @@ function bindCheckQuestion(game) {
   };
   bindField("[data-month-in]", "month");
   bindField("[data-day-in]", "day");
-  bindField("[data-week-in]", "week");
   bindField("[data-lang-in]", "lang");
+  bindField("[data-lang2-in]", "lang2");
+  app.querySelectorAll("[data-week]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      game.week = btn.dataset.week;
+      app.querySelectorAll("[data-week]").forEach((b) => b.classList.toggle("on", b === btn));
+    });
+  });
   app.querySelector("[data-hint]")?.addEventListener("click", () => {
     const box = app.querySelector("[data-hint-box]");
     if (box) box.hidden = false;
@@ -401,7 +417,8 @@ function bindCheckQuestion(game) {
       return;
     }
     if (step === 1) {
-      finishCheckItem(I_ANIMAL_OK.some((a) => toHira(a) === toHira(game.lang)), "language");
+      const set = game.animalSet || ANIMAL_SETS[0];
+      finishCheckItem(twoAnimalsOk(game.lang, game.lang2, set), "language");
       return;
     }
     if (step === 3) {
@@ -417,13 +434,53 @@ function bindCheckQuestion(game) {
   });
 }
 
-function renderCheck() {
-  const playing = brainPlaying();
+function checkStage() {
+  const raw = (location.hash.replace(/^#/, "") || "").split("?")[0];
+  const parts = raw.split("/").filter(Boolean);
+  return parts[2] || "";
+}
+
+function renderCheckResult() {
+  stopCheckTimer();
+  const user = currentUser();
   const game = window.__check;
-  if (playing && game && game.phase === "done") {
-    location.hash = "#/brain";
-    return renderBrain();
+  const row = (user && todayScreen(user.id)) || (game && game.result);
+  if (!row) return renderCheckIntro();
+  const rec = BRAIN_GAMES.find((g) => g.id === row.rec) || BRAIN_GAMES[0];
+  const tired = new Set(row.tired || []);
+  const scores = row.scores || {};
+  const rows = BRAIN_GAMES.map((g) => {
+    const ok = (scores[g.domain] ?? 1) === 1;
+    return `<li class="${ok ? "up" : "low"}"><b>${escapeHtml(g.skill)}</b><span>${
+      ok ? "きょうは元気" : "少しお疲れ気味"
+    }</span></li>`;
+  }).join("");
+  const note = tired.size
+    ? "少しお疲れのところを、やさしく動かすのがおすすめです。"
+    : "どれも元気そうです。今日は気分転換に、この脳トレをどうぞ。";
+  renderCheckShell(`
+    <p class="kicker">今日の脳の元気予報</p>
+    <h1 class="theme">診断結果</h1>
+    <p class="help">病院の診断ではありません。今日の調子の目安です。</p>
+    <ul class="check-report">${rows}</ul>
+    <div class="check-rec">
+      <p class="check-lab">今日のおすすめ</p>
+      <p class="theme rec-name">${escapeHtml(rec.title)}</p>
+      <p class="help">${escapeHtml(note)}</p>
+    </div>
+    <a class="primary" href="#/brain/${rec.id}">おすすめの脳トレへ進む</a>
+    <a class="ghost" href="#/brain">6つの脳トレ一覧</a>
+  `);
+}
+
+function renderCheck() {
+  const stage = checkStage();
+  const game = window.__check;
+  if (stage === "result") return renderCheckResult();
+  if (game && game.phase === "done" && stage === "play") return renderCheckResult();
+  if (stage === "play") {
+    ensureCheck();
+    return renderCheckPlay();
   }
-  if (playing && game) return renderCheckPlay();
   return renderCheckIntro();
 }
