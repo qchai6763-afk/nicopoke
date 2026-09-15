@@ -53,9 +53,10 @@ function weekLabel(d = new Date()) {
   return "日月火水木金土"[d.getDay()];
 }
 
-function moodVisual(kind) {
+function moodVisual(kind, photo) {
   const mood = MOODS.find((m) => m.id === kind) || MOODS[0];
-  return `<img class="mood-photo" src="${mood.photo}" alt="人の顔の写真" />`;
+  const src = photo || (mood.photos && mood.photos[0]) || mood.photo;
+  return `<img class="mood-photo" src="${src}" alt="人の顔の写真" />`;
 }
 
 function toHira(s) {
@@ -89,13 +90,16 @@ function shapeTiles(cells, highlight) {
 }
 
 function startCheck() {
+  const mood = shuffleList(MOODS)[0];
   window.__check = {
     i: 0,
     scores: {},
     picked: [],
     nums: [],
     words: CHECK_WORDS.slice(),
-    mood: shuffleList(MOODS)[0].id,
+    mood: mood.id,
+    moodPhoto: shuffleList((mood.photos || [mood.photo]).slice())[0],
+    abbrev: shuffleList(ABBREV_QUIZ)[0],
     shape: [0, 1, 3],
     shapePick: null,
     lang: "",
@@ -283,22 +287,31 @@ function renderQSpace(game) {
   `;
 }
 
+function hintBlock(text) {
+  if (!text) return "";
+  return `<button class="hint-btn" type="button" data-hint>ヒントを見る</button>
+    <p class="hint-box" hidden data-hint-box>${escapeHtml(text)}</p>`;
+}
+
 function renderQSocial(game) {
+  const labels = shuffleList(MOODS.slice());
   return `
     <h1 class="theme">この人は、どんな気持ち？</h1>
-    <p class="help">写真の顔を見て、気持ちを自分で書いてください。</p>
-    <div class="mood-hero">${moodVisual(game.mood)}</div>
-    <input class="pill" data-mood-in maxlength="12" placeholder="気持ちを書く" />
-    <button class="primary" type="button" data-check-ok>これで答える</button>
+    <p class="help">写真の顔を見て、いちばん近い気持ちを押してください。</p>
+    <div class="mood-hero">${moodVisual(game.mood, game.moodPhoto)}</div>
+    <div class="palette">${labels
+      .map((m) => `<button type="button" class="pal wide" data-mood="${m.id}">${m.label}</button>`)
+      .join("")}</div>
   `;
 }
 
-function renderQMeaning() {
-  const q = ABBREV_QUIZ.find((x) => x.short === "リモコン") || ABBREV_QUIZ[0];
+function renderQMeaning(game) {
+  const q = game.abbrev || ABBREV_QUIZ[0];
   return `
     <h1 class="theme">「${escapeHtml(q.short)}」は何の略？</h1>
     <p class="help">もとのことばを、自分で書いてください。</p>
     <input class="pill" data-lang-in maxlength="24" placeholder="もとのことば" />
+    ${hintBlock(q.hint)}
     <button class="primary" type="button" data-check-ok>これで答える</button>
   `;
 }
@@ -326,7 +339,15 @@ function bindCheckQuestion(game) {
   bindField("[data-day-in]", "day");
   bindField("[data-week-in]", "week");
   bindField("[data-lang-in]", "lang");
-  bindField("[data-mood-in]", "moodText");
+  app.querySelector("[data-hint]")?.addEventListener("click", () => {
+    const box = app.querySelector("[data-hint-box]");
+    if (box) box.hidden = false;
+  });
+  app.querySelectorAll("[data-mood]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      finishCheckItem(btn.dataset.mood === game.mood, "social");
+    });
+  });
   app.querySelectorAll("[data-pad]").forEach((pad) => {
     pad.querySelectorAll("[data-key]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -389,12 +410,8 @@ function bindCheckQuestion(game) {
       finishCheckItem(a === b, "space");
       return;
     }
-    if (step === 4) {
-      finishCheckItem(moodAnswerOk(game.moodText, game.mood), "social");
-      return;
-    }
     if (step === 5) {
-      const q = ABBREV_QUIZ.find((x) => x.short === "リモコン") || ABBREV_QUIZ[0];
+      const q = game.abbrev || ABBREV_QUIZ[0];
       finishCheckItem(quizMatches(game.lang, q), "meaning");
     }
   });

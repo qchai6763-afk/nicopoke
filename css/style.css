@@ -1824,6 +1824,39 @@ a.notice.check-cta {
   background: #ffe07a;
 }
 
+.hint-btn {
+  display: block;
+  margin: 8px auto 10px;
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #8a6a58;
+  font-weight: 800;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.hint-box {
+  background: #fff8e8;
+  color: #5a4030;
+  font-weight: 700;
+  line-height: 1.5;
+  padding: 12px 14px;
+  border-radius: 14px;
+  margin: 0 0 14px;
+}
+
+.quiz-show .hint-btn {
+  color: #ffe07a;
+}
+
+.quiz-show .hint-box {
+  background: rgba(255, 224, 122, 0.18);
+  color: #fffbe6;
+}
+
 .keypad {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

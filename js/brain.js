@@ -503,6 +503,7 @@ function startQuiz() {
     short: q.short,
     answer: q.answer,
     also: q.also || [],
+    hint: q.hint || "",
     choices: shuffleList(q.choices.slice()),
   }));
   window.__quiz = { items, i: 0, picked: null, solved: false, misses: [], history: [], score: 0 };
@@ -549,6 +550,7 @@ function renderQuiz() {
       <div class="quiz-show">
         <div class="quiz-ep">第 ${n} 問　／　全 ${total} 問</div>
         <p class="quiz-q">「${escapeHtml(q.short)}」は<br />何の略？</p>
+        ${solved ? "" : hintBlock(q.hint)}
         <div class="quiz-choices">
           ${q.choices
             .map((c, i) => {
@@ -600,6 +602,10 @@ function renderQuiz() {
     "brain"
   );
   bindTop();
+  app.querySelector("[data-hint]")?.addEventListener("click", () => {
+    const box = app.querySelector("[data-hint-box]");
+    if (box) box.hidden = false;
+  });
   app.querySelectorAll("[data-quiz]").forEach((btn) => {
     btn.addEventListener("click", () => {
       if (game.solved) return;
@@ -739,8 +745,10 @@ function renderSpace() {
 
 function ensureMood() {
   if (!window.__mood) {
-    const qs = shuffleList(MOODS.concat(MOODS)).slice(0, 6);
-    window.__mood = { i: 0, qs, score: 0 };
+    const pool = MOODS.flatMap((m) =>
+      (m.photos || [m.photo]).map((photo) => ({ id: m.id, label: m.label, photo }))
+    );
+    window.__mood = { i: 0, qs: shuffleList(pool).slice(0, 6), score: 0 };
   }
   return window.__mood;
 }
@@ -771,7 +779,7 @@ function renderMood() {
       <a class="back-link" href="#/brain">← 脳トレ一覧</a>
       <p class="kicker">きもち読み　${game.i + 1} / ${game.qs.length}</p>
       <h1 class="theme">この人は、どんな気持ち？</h1>
-      <div class="mood-hero">${moodVisual(q.id)}</div>
+      <div class="mood-hero">${moodVisual(q.id, q.photo)}</div>
       <div class="palette">${MOODS.map(
         (m) => `<button type="button" class="pal wide" data-mood="${m.id}">${m.label}</button>`
       ).join("")}</div>
