@@ -767,7 +767,7 @@ function renderMood() {
       <a class="back-link" href="#/brain">← 脳トレ一覧</a>
       <p class="kicker">きもち読み　${game.i + 1} / ${game.qs.length}</p>
       <h1 class="theme">この人は、どんな気持ち？</h1>
-      <div class="mood-hero">${moodSvg(q.id)}</div>
+      <div class="mood-hero">${moodVisual(q.id)}</div>
       <div class="palette">${MOODS.map(
         (m) => `<button type="button" class="pal wide" data-mood="${m.id}">${m.label}</button>`
       ).join("")}</div>

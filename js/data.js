@@ -204,8 +204,8 @@ const CHECK_WORDS = ["さくら", "かさ", "ねこ"];
 const CHECK_WORD_FOILS = ["くるま", "やま", "つくえ"];
 
 const MOODS = [
-  { id: "happy", label: "うれしい" },
-  { id: "sad", label: "かなしい" },
-  { id: "angry", label: "おこっている" },
-  { id: "wow", label: "おどろいている" },
+  { id: "happy", label: "うれしい", photo: "img/mood-happy.png" },
+  { id: "sad", label: "かなしい", photo: "img/mood-sad.png" },
+  { id: "angry", label: "おこっている", photo: "img/mood-angry.png" },
+  { id: "wow", label: "おどろいている", photo: "img/mood-wow.png" },
 ];

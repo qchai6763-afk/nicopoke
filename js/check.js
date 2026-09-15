@@ -53,6 +53,14 @@ function weekLabel(d = new Date()) {
   return "日月火水木金土"[d.getDay()];
 }
 
+function moodVisual(kind) {
+  const mood = MOODS.find((m) => m.id === kind);
+  if (mood && mood.photo) {
+    return `<img class="mood-photo" src="${mood.photo}" alt="表情の写真" />`;
+  }
+  return moodSvg(kind);
+}
+
 function moodSvg(kind) {
   const face = {
     happy: { mouth: "M9 16 Q12 19 15 16", brow: "" },
@@ -167,13 +175,17 @@ function renderCheckIntro() {
         <li>終わると、今日にぴったりの脳トレに星がつきます。</li>
       </ol>
       <button class="primary" type="button" data-check-go>チェックをはじめる</button>
-      <a class="ghost" href="#/today">先に写真を見る</a>
+      <button class="ghost" type="button" data-check-later>先に写真を見る</button>
     </div>
   `);
   app.querySelector("[data-check-go]")?.addEventListener("click", () => {
     startCheck();
     location.hash = "#/brain/check/play";
     renderCheckPlay();
+  });
+  app.querySelector("[data-check-later]")?.addEventListener("click", () => {
+    window.__deferBrainCheck = true;
+    go("/today");
   });
 }
 
@@ -281,7 +293,7 @@ function renderQSocial(game) {
   return `
     <h1 class="theme">この人は、どんな気持ち？</h1>
     <p class="help">顔を見て、いちばん近い気持ちを押してください。</p>
-    <div class="mood-hero">${moodSvg(game.mood)}</div>
+    <div class="mood-hero">${moodVisual(game.mood)}</div>
     <div class="palette">${MOODS.map(
       (m) => `<button type="button" class="pal wide" data-mood="${m.id}">${m.label}</button>`
     ).join("")}</div>

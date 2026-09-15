@@ -810,6 +810,10 @@ function render() {
     go("/today");
     return;
   }
+  if (user && path !== "brain" && !todayScreen(user.id) && !window.__deferBrainCheck) {
+    go("/brain/check");
+    return;
+  }
   if (path === "login") return renderLogin();
   if (path === "feed") return renderFeed();
   if (path === "brain") return renderBrain();

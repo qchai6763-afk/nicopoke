@@ -1873,6 +1873,14 @@ a.notice.check-cta {
   height: auto;
 }
 
+.mood-photo {
+  width: min(280px, 88vw);
+  height: min(280px, 88vw);
+  object-fit: cover;
+  border-radius: 24px;
+  box-shadow: 0 8px 0 #ffd0dc;
+}
+
 .mem-words {
   display: flex;
   justify-content: center;
