@@ -15,6 +15,16 @@
   </head>
   <body>
     <div id="app"></div>
+    <script>
+      window.NICOPOKE_CLOUD = "";
+      (function () {
+        var path = location.pathname || "/";
+        var last = path.split("/").pop() || "";
+        if (path !== "/" && !path.endsWith("/") && last.indexOf(".") === -1) {
+          history.replaceState(null, "", path + "/" + location.search + location.hash);
+        }
+      })();
+    </script>
     <script src="js/data.js"></script>
     <script src="js/store.js"></script>
     <script src="js/check.js"></script>

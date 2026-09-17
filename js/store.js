@@ -1,4 +1,32 @@
-const KEY = "today-family-v7";
+const KEY_BASE = "today-family-v7";
+const CLOUD_ORIGIN_KEY = "nicopoke-cloud-origin-v1";
+
+function namespacedKey(base) {
+  const path = String(location.pathname || "/")
+    .replace(/\/index\.html$/i, "")
+    .replace(/\/$/, "");
+  if (!path || path === "/") return base;
+  return `${base}:${path}`;
+}
+
+function storageKey() {
+  return namespacedKey(KEY_BASE);
+}
+
+function readNamespacedJson(base, fallback) {
+  const key = namespacedKey(base);
+  try {
+    let raw = localStorage.getItem(key);
+    if (!raw && key !== base) raw = localStorage.getItem(base);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeNamespacedJson(base, value) {
+  localStorage.setItem(namespacedKey(base), JSON.stringify(value));
+}
 
 function todayKey(date = new Date()) {
   const y = date.getFullYear();
@@ -71,7 +99,9 @@ function emptyState() {
 
 function load() {
   try {
-    const raw = localStorage.getItem(KEY);
+    const key = storageKey();
+    let raw = localStorage.getItem(key);
+    if (!raw && key !== KEY_BASE) raw = localStorage.getItem(KEY_BASE);
     if (!raw) return emptyState();
     const parsed = JSON.parse(raw);
     if (!parsed || !Array.isArray(parsed.users) || !Array.isArray(parsed.groups)) {
@@ -107,7 +137,7 @@ function load() {
 let state = load();
 
 function persist() {
-  localStorage.setItem(KEY, JSON.stringify(state));
+  localStorage.setItem(storageKey(), JSON.stringify(state));
 }
 
 function getState() {
@@ -139,9 +169,73 @@ function findGroupByCode(code) {
   return state.groups.find((g) => normalizeCode(g.code) === c) || null;
 }
 
-function cloudPaths(code) {
-  const c = encodeURIComponent(normalizeCode(code));
-  return [`/.netlify/functions/group?code=${c}`];
+function uniqueList(items) {
+  const out = [];
+  items.forEach((item) => {
+    if (item && !out.includes(item)) out.push(item);
+  });
+  return out;
+}
+
+function rememberedCloudOrigin() {
+  try {
+    return localStorage.getItem(CLOUD_ORIGIN_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function rememberCloudOrigin(url) {
+  try {
+    const parsed = new URL(url, location.href);
+    if (!parsed.origin || parsed.origin === "null") return;
+    if (isStaticHost(parsed.hostname)) return;
+    localStorage.setItem(CLOUD_ORIGIN_KEY, parsed.origin);
+  } catch {
+    /* ignore */
+  }
+}
+
+function isStaticHost(hostname) {
+  const host = String(hostname || location.hostname || "");
+  return /\.github\.io$/i.test(host);
+}
+
+function cloudPathsForOrigin(origin) {
+  const paths = ["/api/group"];
+  try {
+    const host = new URL(origin).hostname;
+    if (/netlify\.app$/i.test(host) || /netlify\.com$/i.test(host)) {
+      paths.push("/.netlify/functions/group");
+    }
+  } catch {
+    /* keep /api/group only */
+  }
+  return paths;
+}
+
+function cloudOrigins() {
+  const extra = String(window.NICOPOKE_CLOUD || "").replace(/\/$/, "");
+  const remembered = rememberedCloudOrigin().replace(/\/$/, "");
+  const here = String(location.origin || "").replace(/\/$/, "");
+  const origins = [];
+  if (here && !isStaticHost()) origins.push(here);
+  if (extra && extra !== here) origins.push(extra);
+  if (remembered && origins.includes(remembered)) origins.unshift(remembered);
+  return uniqueList(origins);
+}
+
+function cloudUrls(code) {
+  const query = code
+    ? `code=${encodeURIComponent(normalizeCode(code))}`
+    : "ping=1";
+  const urls = [];
+  cloudOrigins().forEach((origin) => {
+    cloudPathsForOrigin(origin).forEach((path) => {
+      urls.push(`${origin}${path}?${query}`);
+    });
+  });
+  return uniqueList(urls);
 }
 
 function parseCloudBody(text) {
@@ -159,25 +253,43 @@ function isGroupPayload(data) {
   return Boolean(data && data.group && data.group.id);
 }
 
+function isUsableCloudReply(res) {
+  if (!res || !res.data) return false;
+  if (res.ok && (res.data.ok || res.data.stored || isGroupPayload(res.data))) return true;
+  const code = res.data.errorCode;
+  return Boolean(code && code !== "STORE_UNAVAILABLE");
+}
+
 async function requestCloud(path, options) {
   try {
     const headers = Object.assign(
       { Accept: "application/json" },
       (options && options.headers) || {}
     );
-    const res = await fetch(path, Object.assign({ cache: "no-store" }, options, { headers }));
+    const res = await fetch(path, Object.assign({ cache: "no-store", mode: "cors", credentials: "omit" }, options, { headers }));
     const text = await res.text();
-    return { status: res.status, ok: res.ok, data: parseCloudBody(text) };
+    return { status: res.status, ok: res.ok, data: parseCloudBody(text), url: path };
   } catch {
-    return { status: 0, ok: false, data: null };
+    return { status: 0, ok: false, data: null, url: path };
   }
+}
+
+async function requestCloudAcrossHosts(code, options) {
+  let last = { ok: false, status: 0, data: null, url: "" };
+  for (const url of cloudUrls(code)) {
+    const res = await requestCloud(url, options);
+    last = res;
+    if (isUsableCloudReply(res) || (res.ok && res.data)) {
+      rememberCloudOrigin(url);
+      return res;
+    }
+  }
+  return last;
 }
 
 async function fetchCloud(code) {
   const n = normalizeCode(code);
-  const path = cloudPaths(n)[0];
-  const last = await requestCloud(path, { headers: { "X-Join-Code": n } });
-  return last;
+  return requestCloudAcrossHosts(n, { headers: { "X-Join-Code": n } });
 }
 
 async function pullCloud(code) {
@@ -190,16 +302,16 @@ async function putCloud(code, body) {
   const n = normalizeCode(code);
   if (body && body.group) body.group.code = n;
   const payload = JSON.stringify(body);
-  const path = cloudPaths(n)[0];
   let last = { ok: false, stop: true, data: null, status: 0 };
   for (const method of ["POST", "PUT"]) {
-    const res = await requestCloud(path, {
+    const res = await requestCloudAcrossHosts(n, {
       method,
       headers: { "Content-Type": "application/json", "X-Join-Code": n },
       body: payload,
     });
     last = res;
     if (res.ok && res.data && (res.data.stored || isGroupPayload(res.data))) {
+      rememberCloudOrigin(res.url);
       return { ok: true, stop: false, data: res.data };
     }
     if (res.data && res.data.errorCode === "SAVE_FAILED") {
@@ -341,10 +453,20 @@ async function pushCloud(groupId) {
 }
 
 let cloudTimer = 0;
+let cloudRetryCount = 0;
 function queueCloudSync(groupId) {
   window.clearTimeout(cloudTimer);
-  cloudTimer = window.setTimeout(() => {
-    pushCloud(groupId);
+  cloudTimer = window.setTimeout(async () => {
+    const ok = await pushCloud(groupId);
+    if (ok) {
+      cloudRetryCount = 0;
+      return;
+    }
+    cloudRetryCount += 1;
+    if (cloudRetryCount < 8) {
+      const wait = Math.min(30000, 1200 * cloudRetryCount * cloudRetryCount);
+      cloudTimer = window.setTimeout(() => queueCloudSync(groupId), wait);
+    }
   }, 400);
 }
 
@@ -426,22 +548,22 @@ function buildUser({ name }) {
 
 function joinErrorFromCloud(remote) {
   const errorCode = remote && remote.data && remote.data.errorCode;
-  if (errorCode === "NOT_FOUND" || remote.status === 404) {
-    return "その参加コードのグループは見つかりませんでした。同じ公開ページでグループを作ったあと、表示された参加コードを入力してください。";
+  if (errorCode === "NOT_FOUND") {
+    return "その参加コードのグループは見つかりませんでした。表示された6文字をまちがいなく入力してください。";
   }
-  if (errorCode === "STORE_UNAVAILABLE" || errorCode === "SAVE_FAILED" || remote.status === 501) {
-    return "グループの共有サーバーに接続できません。Netlifyの公開ページから操作してください。";
-  }
-  if (errorCode === "BAD_CODE" || remote.status === 400) {
+  if (errorCode === "BAD_CODE" || (remote.status === 400 && remote.data)) {
     return "参加コードの形式が正しくありません。4〜8文字の英数字か確かめてください。";
   }
-  if (remote.status === 0) {
-    return "つながりの確認ができませんでした。グループを作ったときと【同じ公開ページ】を開いてください。";
+  if (errorCode === "STORE_UNAVAILABLE" || errorCode === "SAVE_FAILED" || remote.status === 501) {
+    return "グループの共有サーバーに接続できません。少し待ってからもう一度試してください。";
+  }
+  if (!remote.data || remote.status === 0) {
+    return "グループの共有サーバーに接続できませんでした。通信を確かめて、もう一度試してください。";
   }
   if (remote.status >= 500) {
     return "グループの共有サーバーに接続できません。少し待ってからもう一度試してください。";
   }
-  return "グループを探せませんでした。同じ公開ページから参加してください。";
+  return "グループを探せませんでした。参加コードをもう一度確認してください。";
 }
 
 async function startGroup({ groupName, name }) {
@@ -469,17 +591,17 @@ async function startGroup({ groupName, name }) {
   state.memberships.push({ userId: user.id, groupId: group.id });
   state.currentUserId = user.id;
   persist();
+  notify();
   const uploaded = await pushCloud(group.id);
   if (!uploaded) {
-    state.currentUserId = null;
-    persist();
-    notify();
+    queueCloudSync(group.id);
     return {
-      ok: false,
-      error: "グループの共有保存に失敗しました。同じ公開ページ（Netlify）から作り直してください。",
+      ok: true,
+      group,
+      user,
+      warn: "この端末には保存しました。友だちの参加用の共有保存は、自動でもう一度送ります。",
     };
   }
-  notify();
   return { ok: true, group, user };
 }
 
@@ -510,11 +632,12 @@ async function joinWithCode({ code, name }) {
   state.currentUserId = user.id;
   notify();
   if (!uploaded) {
+    queueCloudSync(group.id);
     return {
       ok: true,
       group,
       user,
-      warn: "参加はできましたが、共有保存に失敗しました。同じ公開ページでもう一度開いてみてください。",
+      warn: "参加はできました。共有サーバーへの保存は、自動でもう一度送ります。",
     };
   }
   return { ok: true, group, user };

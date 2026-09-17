@@ -106,7 +106,7 @@ function startPlayClock(kind) {
 
 function loadPlayTimes() {
   try {
-    return JSON.parse(localStorage.getItem(PLAY_TIME_KEY) || "{}") || {};
+    return readNamespacedJson(PLAY_TIME_KEY, {}) || {};
   } catch {
     return {};
   }
@@ -128,7 +128,7 @@ function savePlayTime(kind, ms) {
   const entry = { id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`, ms, at: Date.now() };
   all[uid][kind].push(entry);
   all[uid][kind] = all[uid][kind].slice(-40);
-  localStorage.setItem(PLAY_TIME_KEY, JSON.stringify(all));
+  writeNamespacedJson(PLAY_TIME_KEY, all);
   return entry;
 }
 
@@ -1080,7 +1080,7 @@ function ensureNazo() {
 
 function loadNazoStore() {
   try {
-    return JSON.parse(localStorage.getItem(NAZO_KEY) || "{}") || {};
+    return readNamespacedJson(NAZO_KEY, {}) || {};
   } catch {
     return {};
   }
@@ -1107,7 +1107,7 @@ function saveNazoRound(game) {
     solved: Array.from(solved),
   };
   all[uid] = next;
-  localStorage.setItem(NAZO_KEY, JSON.stringify(all));
+  writeNamespacedJson(NAZO_KEY, all);
   return { ...next, prevBest };
 }
 

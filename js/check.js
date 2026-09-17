@@ -3,7 +3,7 @@ const CHECK_SECS = [30, 35, 10, 10, 25, 30];
 
 function loadScreens() {
   try {
-    return JSON.parse(localStorage.getItem(SCREEN_KEY) || "{}") || {};
+    return readNamespacedJson(SCREEN_KEY, {}) || {};
   } catch {
     return {};
   }
@@ -19,7 +19,7 @@ function todayScreen(userId) {
 function saveScreen(userId, payload) {
   const all = loadScreens();
   all[userId] = { ...payload, date: todayKey() };
-  localStorage.setItem(SCREEN_KEY, JSON.stringify(all));
+  writeNamespacedJson(SCREEN_KEY, all);
 }
 
 function stopCheckTimer() {
