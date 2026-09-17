@@ -1,14 +1,137 @@
-import { handleGroupRequest } from "../lib/group-core.mjs";
-
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: "4mb",
-    },
-  },
-};
-
+const STORE_NAME = "nicopoke-groups";
 const PREFIX = "nicopoke-groups/";
+
+function cors(res) {
+  res.setHeader("Content-Type", "application/json");
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, PUT, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Join-Code");
+}
+
+function send(res, status, body) {
+  cors(res);
+  if (body && !body.store) body.store = STORE_NAME;
+  res.status(status).send(JSON.stringify(body));
+}
+
+function fail(res, status, errorCode, extra) {
+  send(
+    res,
+    status,
+    Object.assign(
+      { ok: false, error: errorCode, errorCode, store: STORE_NAME },
+      extra || {}
+    )
+  );
+}
+
+function normalizeCode(raw) {
+  return String(raw || "")
+    .trim()
+    .replace(/[\uFF01-\uFF5E]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/[\s\u3000\-ー＿_]/g, "")
+    .toUpperCase();
+}
+
+function upsertById(list, item, mergeFn) {
+  if (!item || !item.id) return;
+  const i = list.findIndex((x) => x.id === item.id);
+  if (i < 0) list.push(item);
+  else list[i] = mergeFn ? mergeFn(list[i], item) : item;
+}
+
+function mergeQuest(local, incoming) {
+  if (!local) return incoming;
+  if (!incoming) return local;
+  const localPosted = Boolean(local.photoDataUrl);
+  const incomingPosted = Boolean(incoming.photoDataUrl);
+  if (incomingPosted && !localPosted) return incoming;
+  if (localPosted && !incomingPosted) {
+    return Object.assign({}, incoming, {
+      photoDataUrl: local.photoDataUrl,
+      caption: incoming.caption || local.caption,
+      postedAt: incoming.postedAt || local.postedAt,
+      revealed: incoming.revealed || local.revealed,
+    });
+  }
+  if ((incoming.postedAt || 0) > (local.postedAt || 0)) return incoming;
+  return Object.assign({}, local, incoming, {
+    photoDataUrl: localPosted ? local.photoDataUrl : incoming.photoDataUrl,
+  });
+}
+
+function mergeUser(local, incoming) {
+  if (!local) return incoming;
+  if (!incoming) return local;
+  const out = Object.assign({}, local, incoming);
+  if (!incoming.photo && local.photo) out.photo = local.photo;
+  return out;
+}
+
+function mergeSnapshots(existing, incoming) {
+  if (!incoming || !incoming.group) return existing || incoming;
+  if (!existing || !existing.group) return incoming;
+  const group = Object.assign({}, existing.group, incoming.group);
+  group.code = normalizeCode(incoming.group.code || existing.group.code);
+  group.memberIds = Array.from(
+    new Set([].concat(existing.group.memberIds || [], incoming.group.memberIds || []))
+  );
+  const users = (existing.users || []).slice();
+  (incoming.users || []).forEach((u) => upsertById(users, u, mergeUser));
+  const memberships = (existing.memberships || []).filter(
+    (m) => !(incoming.memberships || []).some((x) => x && x.userId === m.userId)
+  );
+  (incoming.memberships || []).forEach((m) => {
+    if (m && m.userId) memberships.push(m);
+  });
+  const quests = (existing.quests || []).slice();
+  (incoming.quests || []).forEach((q) => upsertById(quests, q, mergeQuest));
+  const guesses = (existing.guesses || []).slice();
+  (incoming.guesses || []).forEach((g) => upsertById(guesses, g));
+  const comments = (existing.comments || []).slice();
+  (incoming.comments || []).forEach((c) => upsertById(comments, c));
+  const likes = (existing.likes || []).slice();
+  (incoming.likes || []).forEach((l) => upsertById(likes, l));
+  return { group, users, memberships, quests, guesses, comments, likes };
+}
+
+function parseGroup(data) {
+  if (!data) return null;
+  if (typeof data === "string") {
+    try {
+      data = JSON.parse(data);
+    } catch {
+      return null;
+    }
+  }
+  if (data && data.group) {
+    data.group.code = normalizeCode(data.group.code);
+    return data;
+  }
+  return null;
+}
+
+function header(req, name) {
+  const value = req.headers[name] || req.headers[name.toLowerCase()];
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function codeFromReq(req, payload) {
+  const url = new URL(req.url, "http://localhost");
+  const candidates = [
+    url.searchParams.get("code"),
+    header(req, "x-join-code"),
+    payload && payload.group && payload.group.code,
+  ];
+  let rawReceived = "";
+  for (const raw of candidates) {
+    if (raw == null || raw === "") continue;
+    if (!rawReceived) rawReceived = String(raw);
+    const n = normalizeCode(raw);
+    if (/^[A-Z2-9]{4,8}$/.test(n)) return n;
+  }
+  return normalizeCode(rawReceived);
+}
 
 function memoryStore() {
   const g = globalThis;
@@ -53,8 +176,10 @@ function blobStore(token) {
     async get(key) {
       const path = blobPath(key);
       if (storeId) {
-        const publicUrl = `https://${storeId}.public.blob.vercel-storage.com/${path}`;
-        const published = await fetch(publicUrl, { cache: "no-store" });
+        const published = await fetch(
+          `https://${storeId}.public.blob.vercel-storage.com/${path}`,
+          { cache: "no-store" }
+        );
         if (published.ok) return published.json();
       }
       const res = await fetch(
@@ -67,8 +192,7 @@ function blobStore(token) {
         const file = await fetch(payload.url, { cache: "no-store" });
         if (file.ok) return file.json();
       }
-      if (payload && payload.group) return payload;
-      return null;
+      return payload && payload.group ? payload : null;
     },
     async set(key, data) {
       const path = blobPath(key);
@@ -98,39 +222,65 @@ function makeStore() {
   return token ? blobStore(token) : memoryStore();
 }
 
-function incomingUrl(req) {
-  const proto = req.headers["x-forwarded-proto"] || "https";
-  const host = req.headers.host || "localhost";
-  return `${proto}://${host}${req.url}`;
-}
+module.exports = async function handler(req, res) {
+  try {
+    if (req.method === "OPTIONS") {
+      cors(res);
+      res.status(204).end();
+      return;
+    }
 
-function incomingHeaders(req) {
-  const headers = new Headers();
-  Object.entries(req.headers || {}).forEach(([key, value]) => {
-    if (value == null) return;
-    headers.set(key, Array.isArray(value) ? value.join(",") : String(value));
-  });
-  return headers;
-}
+    const url = new URL(req.url, "http://localhost");
+    if (url.searchParams.get("ping")) {
+      send(res, 200, { ok: true, store: STORE_NAME });
+      return;
+    }
 
-function incomingBody(req) {
-  if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return undefined;
-  if (typeof req.body === "string") return req.body;
-  if (Buffer.isBuffer(req.body)) return req.body;
-  if (req.body == null) return undefined;
-  return JSON.stringify(req.body);
-}
+    const store = makeStore();
+    const payload = req.method === "POST" || req.method === "PUT" ? req.body : null;
+    const code = codeFromReq(req, payload);
+    if (!/^[A-Z2-9]{4,8}$/.test(code)) {
+      fail(res, 400, "BAD_CODE");
+      return;
+    }
 
-export default async function handler(req, res) {
-  const request = new Request(incomingUrl(req), {
-    method: req.method,
-    headers: incomingHeaders(req),
-    body: incomingBody(req),
-  });
-  const response = await handleGroupRequest(request, makeStore());
-  res.status(response.status);
-  response.headers.forEach((value, key) => {
-    res.setHeader(key, value);
-  });
-  res.send(await response.text());
-}
+    if (req.method === "GET") {
+      const data = parseGroup(await store.get(code));
+      if (!data) {
+        fail(res, 404, "NOT_FOUND", { code, key: code });
+        return;
+      }
+      send(res, 200, data);
+      return;
+    }
+
+    if (req.method === "POST" || req.method === "PUT") {
+      if (!payload || !payload.group) {
+        fail(res, 400, "NEED_GROUP");
+        return;
+      }
+      payload.group.code = code;
+      try {
+        const existing = parseGroup(await store.get(code));
+        const merged = mergeSnapshots(existing, payload);
+        await store.set(code, merged);
+        const check = parseGroup(await store.get(code));
+        if (!check) throw new Error("save completed but get returned empty");
+        send(res, 200, {
+          ok: true,
+          stored: true,
+          errorCode: null,
+          store: STORE_NAME,
+          group: { id: merged.group.id, code, key: code },
+        });
+      } catch (err) {
+        fail(res, 500, "SAVE_FAILED", { message: String((err && err.message) || err) });
+      }
+      return;
+    }
+
+    fail(res, 405, "METHOD");
+  } catch (err) {
+    fail(res, 500, "STORE_UNAVAILABLE", { message: String((err && err.message) || err) });
+  }
+};
