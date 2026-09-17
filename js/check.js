@@ -140,7 +140,8 @@ function finishCheck() {
   stopCheckTimer();
   const game = ensureCheck();
   const user = currentUser();
-  const ranked = BRAIN_GAMES.slice().sort((a, b) => {
+  const screenList = BRAIN_GAMES.filter((g) => g.domain !== "insight");
+  const ranked = screenList.slice().sort((a, b) => {
     const sa = game.scores[a.domain] ?? 1;
     const sb = game.scores[b.domain] ?? 1;
     return sa - sb;
@@ -449,12 +450,14 @@ function renderCheckResult() {
   const rec = BRAIN_GAMES.find((g) => g.id === row.rec) || BRAIN_GAMES[0];
   const tired = new Set(row.tired || []);
   const scores = row.scores || {};
-  const rows = BRAIN_GAMES.map((g) => {
-    const ok = (scores[g.domain] ?? 1) === 1;
-    return `<li class="${ok ? "up" : "low"}"><b>${escapeHtml(g.skill)}</b><span>${
-      ok ? "きょうは元気" : "少しお疲れ気味"
-    }</span></li>`;
-  }).join("");
+  const rows = BRAIN_GAMES.filter((g) => g.domain !== "insight")
+    .map((g) => {
+      const ok = (scores[g.domain] ?? 1) === 1;
+      return `<li class="${ok ? "up" : "low"}"><b>${escapeHtml(g.skill)}</b><span>${
+        ok ? "きょうは元気" : "少しお疲れ気味"
+      }</span></li>`;
+    })
+    .join("");
   const note = tired.size
     ? "少しお疲れのところを、やさしく動かすのがおすすめです。"
     : "どれも元気そうです。今日は気分転換に、この脳トレをどうぞ。";
@@ -469,7 +472,7 @@ function renderCheckResult() {
       <p class="help">${escapeHtml(note)}</p>
     </div>
     <a class="primary" href="#/brain/${rec.id}">おすすめの脳トレへ進む</a>
-    <a class="ghost" href="#/brain">6つの脳トレ一覧</a>
+    <a class="ghost" href="#/brain">脳トレ一覧</a>
   `);
 }
 

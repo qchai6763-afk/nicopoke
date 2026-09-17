@@ -169,12 +169,17 @@ function freshBrainGame(kind) {
   if (kind === "order") window.__order = null;
   if (kind === "space") window.__space = null;
   if (kind === "mood") window.__mood = null;
+  if (kind === "nazo") startNazo();
 }
 
 function restartBrainGame(kind) {
   stopPlayClock();
   freshBrainGame(kind);
-  window.__playRun = { kind, startedAt: Date.now(), clearedAt: 0, ms: 0, entryId: 0 };
+  if (kind === "nazo") {
+    window.__playRun = null;
+  } else {
+    window.__playRun = { kind, startedAt: Date.now(), clearedAt: 0, ms: 0, entryId: 0 };
+  }
   location.hash = `#/brain/${kind}/play`;
   renderBrain();
 }
@@ -233,7 +238,7 @@ function renderPlayResult(kind) {
         </ol>
         <p class="help">だれかと比べるものではありません。昨日の自分より、楽しく続けましょう。</p>
         <button class="primary" type="button" data-play-again>もう一度挑戦する</button>
-        <a class="ghost" href="#/brain">6つの脳トレ一覧</a>
+        <a class="ghost" href="#/brain">脳トレ一覧</a>
       </div>
     `,
     "brain"
@@ -419,6 +424,17 @@ const BRAIN_INTRO = {
       "何問か続きます。正解でもまちがいでも、次へ進みます。",
     ],
   },
+  nazo: {
+    title: "ナゾナゾひらめき",
+    img: "img/brain-intro-quiz.png",
+    alt: "大きな選択肢をゆっくり選んでいるイラスト",
+    lead: "ダジャレやひらめきで、頭の固まりをほぐします。時間を競いません。",
+    steps: [
+      "制限時間はありません。ゆっくり考えてください。",
+      "ピンと来た答えを、大きなボタンで押します。",
+      "当たったら「なるほど！」と解説が出ます。メダルは自分との記録です。",
+    ],
+  },
 };
 
 function renderBrainIntro(kind) {
@@ -433,7 +449,7 @@ function renderBrainIntro(kind) {
       <p class="kicker">はじめる前に</p>
       <h1 class="theme">${info.title}</h1>
       <div class="brain-intro">
-        <img class="intro-photo" src="${info.img}" alt="${info.alt}" />
+        ${info.img ? `<img class="intro-photo" src="${info.img}" alt="${info.alt}" />` : ""}
         <p class="intro-lead">${info.lead}</p>
         <ol class="intro-steps">
           ${info.steps.map((s) => `<li>${s}</li>`).join("")}
@@ -490,6 +506,11 @@ function renderBrain() {
     if (!playing) return renderBrainIntro("mood");
     return renderMood();
   }
+  if (kind === "nazo") {
+    if (brainStage() === "result") return renderNazoResult();
+    if (!playing) return renderBrainIntro("nazo");
+    return renderNazo();
+  }
 
   const user = currentUser();
   const screen = todayScreen(user.id);
@@ -500,8 +521,8 @@ function renderBrain() {
   app.innerHTML = chrome(
     `
       <p class="kicker">今日の脳トレ</p>
-      <h1 class="theme">6つの息抜き</h1>
-      <p class="help">診断ではありません。いちばん上の金色のカードが、今日のおすすめです。</p>
+      <h1 class="theme">今日の息抜き</h1>
+      <p class="help">診断ではありません。いちばん上の金色のカードが、今日のおすすめです。ナゾナゾに時間制限はありません。</p>
       <a class="ghost" href="#/brain/check">元気予報をもう一度</a>
       ${ordered
         .map((g) => {
@@ -998,6 +1019,189 @@ function renderMood() {
       renderMood();
     });
   });
+}
+
+const NAZO_KEY = "nicopoke-nazo-v1";
+const NAZO_ROUND = 8;
+
+function nazoChoices(item) {
+  const foils = shuffleList(
+    NAZO_QUIZ.filter((q) => q.id !== item.id && q.answer !== item.answer && q.answer !== "影")
+  ).slice(0, 2);
+  return shuffleList([item.answer].concat(foils.map((q) => q.answer)));
+}
+
+function startNazo() {
+  const items = shuffleList(NAZO_QUIZ)
+    .slice(0, NAZO_ROUND)
+    .map((q) => ({
+      id: q.id,
+      question: q.question,
+      answer: q.answer,
+      category: q.category,
+      explanation: q.explanation,
+      choices: nazoChoices(q),
+    }));
+  window.__nazo = { items, i: 0, solved: false, misses: [], score: 0, firsts: [] };
+}
+
+function ensureNazo() {
+  if (!window.__nazo || !Array.isArray(window.__nazo.items)) startNazo();
+  return window.__nazo;
+}
+
+function loadNazoStore() {
+  try {
+    return JSON.parse(localStorage.getItem(NAZO_KEY) || "{}") || {};
+  } catch {
+    return {};
+  }
+}
+
+function nazoUserStore() {
+  const user = currentUser();
+  const uid = (user && user.id) || "guest";
+  const all = loadNazoStore();
+  const row = all[uid] || { best: 0, solved: [] };
+  if (!Array.isArray(row.solved)) row.solved = [];
+  return { uid, all, row };
+}
+
+function saveNazoRound(game) {
+  const { uid, all, row } = nazoUserStore();
+  const solved = new Set(row.solved.concat(game.firsts || []));
+  game.items.forEach((q, idx) => {
+    if (idx < game.i || (idx === game.i && game.solved)) solved.add(q.id);
+  });
+  const prevBest = Number(row.best) || 0;
+  const next = {
+    best: Math.max(prevBest, game.score),
+    solved: Array.from(solved),
+  };
+  all[uid] = next;
+  localStorage.setItem(NAZO_KEY, JSON.stringify(all));
+  return { ...next, prevBest };
+}
+
+function nazoMedal(score, total) {
+  if (score >= total) return { medal: "🥇", title: "ひらめき達人！" };
+  if (score >= Math.ceil(total * 0.75)) return { medal: "🥈", title: "名人級！" };
+  if (score >= Math.ceil(total * 0.5)) return { medal: "🥉", title: "よくできました！" };
+  return { medal: "🌸", title: "チャレンジ賞！" };
+}
+
+function renderNazo() {
+  stopPlayClock();
+  const game = ensureNazo();
+  if (game.i >= game.items.length) {
+    location.hash = "#/brain/nazo/result";
+    return renderNazoResult();
+  }
+  const q = game.items[game.i];
+  const n = game.i + 1;
+  const total = game.items.length;
+  const store = nazoUserStore().row;
+  const already = store.solved.includes(q.id);
+  app.innerHTML = chrome(
+    `
+      <a class="back-link" href="#/brain">← 脳トレ一覧</a>
+      <p class="kicker">ナゾナゾ　${n} / ${total}　${escapeHtml(q.category)}</p>
+      <div class="nazo-card">
+        <p class="nazo-q">${escapeHtml(q.question)}</p>
+        <div class="nazo-choices">
+          ${q.choices
+            .map((c) => {
+              const miss = game.misses.includes(c);
+              const yes = game.solved && c === q.answer;
+              return `<button type="button" class="nazo-opt ${miss ? "no" : ""} ${yes ? "yes" : ""}" data-nazo="${escapeHtml(
+                c
+              )}" ${game.solved || miss ? "disabled" : ""}>${escapeHtml(c)}</button>`;
+            })
+            .join("")}
+        </div>
+        ${
+          game.solved
+            ? `<div class="nazo-aha">
+                 <p class="nazo-aha-title">なるほど！</p>
+                 <p class="nazo-medal">${already && !game.firsts.includes(q.id) ? "🌸" : "🏅"} ${
+                   game.firsts.includes(q.id) ? "新しいメダル" : "ひらめきました"
+                 }</p>
+                 <p class="nazo-exp">${escapeHtml(q.explanation)}</p>
+                 <button class="primary" type="button" data-nazo-next>${
+                   n === total ? "結果を見る" : "つぎのナゾナゾへ"
+                 }</button>
+               </div>`
+            : game.misses.length
+              ? `<p class="nazo-hint">おしい！焦らなくて大丈夫。ほかを押してみてください。</p>`
+              : `<p class="nazo-hint">ゆっくりで大丈夫。時間は数えません。</p>`
+        }
+      </div>
+    `,
+    "brain"
+  );
+  bindTop();
+  app.querySelectorAll("[data-nazo]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (game.solved) return;
+      const picked = btn.dataset.nazo;
+      if (game.misses.includes(picked)) return;
+      if (picked === q.answer) {
+        game.solved = true;
+        game.score += 1;
+        if (!already) game.firsts.push(q.id);
+        quizBeep(true);
+      } else {
+        game.misses.push(picked);
+      }
+      renderNazo();
+    });
+  });
+  app.querySelector("[data-nazo-next]")?.addEventListener("click", () => {
+    game.i += 1;
+    game.solved = false;
+    game.misses = [];
+    if (game.i >= game.items.length) {
+      location.hash = "#/brain/nazo/result";
+      renderNazoResult();
+      return;
+    }
+    renderNazo();
+  });
+}
+
+function renderNazoResult() {
+  stopPlayClock();
+  const game = window.__nazo;
+  if (!game || !game.items) return renderBrainIntro("nazo");
+  const total = game.items.length;
+  const prevBest = nazoUserStore().row.best || 0;
+  const saved = saveNazoRound(game);
+  const rank = nazoMedal(game.score, total);
+  const isBest = game.score > prevBest;
+  const got = (saved.solved || []).length;
+  const book = NAZO_QUIZ.length;
+  app.innerHTML = chrome(
+    `
+      <a class="back-link" href="#/brain">← 脳トレ一覧</a>
+      <p class="kicker">ナゾナゾひらめき</p>
+      <h1 class="theme">おつかれさま！</h1>
+      <div class="play-result nazo-result">
+        <p class="play-time-label">今回のなるほど</p>
+        <p class="play-time-big">${game.score} / ${total} 問！</p>
+        <p class="play-rank"><span>${rank.medal}</span>${escapeHtml(rank.title)}</p>
+        ${isBest ? `<p class="play-pb">自己ベスト更新！昨日の自分をこえました</p>` : ""}
+        <p class="help">いちばんよかった回：${saved.best} / ${total} 問</p>
+        <p class="check-lab">ひらめき図鑑</p>
+        <p class="nazo-book">${got} / ${book} 問 わかった</p>
+        <p class="help">だれかと比べるものではありません。制限時間もないので、また好きなときにどうぞ。</p>
+        <button class="primary" type="button" data-play-again>もう一度ひらめく</button>
+        <a class="ghost" href="#/brain">脳トレ一覧</a>
+      </div>
+    `,
+    "brain"
+  );
+  bindTop();
+  app.querySelector("[data-play-again]")?.addEventListener("click", () => restartBrainGame("nazo"));
 }
 
 
