@@ -414,6 +414,12 @@ function renderToday() {
     `
       ${statusRow(group, user.id)}
       ${riskNote}
+      ${
+        todayScreen(user.id)
+          ? ""
+          : `<a class="notice check-cta" href="#/brain/check">今日の脳の元気予報をしませんか<small>診断ではありません。文字や数字を自分で入れる、やさしい6問です。</small></a>`
+      }
+      ${learnCtaHtml()}
       <div class="streak ${streak ? "pulse" : ""}">${escapeHtml(streakLabel(streak))}</div>
       <p class="kicker">${formatDateLabel(todayKey())}　今日の一枚</p>
       ${
@@ -700,6 +706,7 @@ function renderMe() {
         )}</b></div>
       </div>
       <a class="primary" href="#/brain">脳トレで息抜き</a>
+      ${learnCtaHtml()}
       <form data-name>
         <p class="kicker">表示名</p>
         <div class="actions">
@@ -805,9 +812,14 @@ function render() {
     go("/today");
     return;
   }
+  if (user && path !== "brain" && path !== "learn" && !todayScreen(user.id) && !window.__deferBrainCheck) {
+    go("/brain/check");
+    return;
+  }
   if (path === "login") return renderLogin();
   if (path === "feed") return renderFeed();
   if (path === "brain") return renderBrain();
+  if (path === "learn") return renderLearn();
   if (path === "me") return renderMe();
   return renderToday();
 }
