@@ -524,6 +524,7 @@ function renderBrain() {
       <h1 class="theme">今日の息抜き</h1>
       <p class="help">診断ではありません。いちばん上の金色のカードが、今日のおすすめです。ナゾナゾに時間制限はありません。</p>
       <a class="ghost" href="#/brain/check">元気予報をもう一度</a>
+      ${learnCtaHtml()}
       ${ordered
         .map((g) => {
           const star = g.id === rec;
@@ -1152,7 +1153,7 @@ function renderNazo() {
                  }</button>
                </div>`
             : `<p class="help">選択肢はありません。思い浮かんだ答えを書いてください。</p>
-               <input class="pill nazo-in" data-nazo-in maxlength="24" placeholder="なまえを書く" value="${escapeHtml(
+               <input class="pill nazo-in" data-nazo-in maxlength="24" placeholder="答えを書く" value="${escapeHtml(
                  game.typed || ""
                )}" />
                <button class="primary" type="button" data-nazo-ok>これで答える</button>
