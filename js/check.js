@@ -89,6 +89,13 @@ function shapeTiles(cells, highlight) {
     .join("")}</div>`;
 }
 
+function pickAnimalSet() {
+  const user = currentUser();
+  const dayPick = hashString(`${todayKey()}:${(user && user.id) || "x"}:animal`) % ANIMAL_SETS.length;
+  const retake = Boolean(window.__check && window.__check.animalSet);
+  return retake ? shuffleList(ANIMAL_SETS)[0] : ANIMAL_SETS[dayPick];
+}
+
 function startCheck() {
   const mood = shuffleList(MOODS)[0];
   window.__check = {
@@ -102,9 +109,10 @@ function startCheck() {
     abbrev: shuffleList(ABBREV_QUIZ)[0],
     shape: [0, 1, 3],
     shapePick: null,
-    animalSet: shuffleList(ANIMAL_SETS)[0],
+    animalSet: pickAnimalSet(),
     lang: "",
     lang2: "",
+    langReview: null,
     month: "",
     day: "",
     week: "",
@@ -128,6 +136,7 @@ function finishCheckItem(ok, domain) {
   game.shapePick = null;
   game.lang = "";
   game.lang2 = "";
+  game.langReview = null;
   game.moodText = "";
   game.month = "";
   game.day = "";
@@ -176,6 +185,10 @@ function renderCheckShell(inner, { timer } = {}) {
     const sec = CHECK_SECS[game.i] || 30;
     startCheckTimer(sec, () => {
       const cur = ensureCheck();
+      if (cur.i === 1 && !cur.langReview) {
+        showAnimalReview(false, true);
+        return;
+      }
       const domain = ["memory", "language", "exec", "space", "social", "meaning"][cur.i];
       finishCheckItem(false, domain);
     });
@@ -217,6 +230,7 @@ function renderCheckPlay() {
   const game = ensureCheck();
   if (game.phase === "done") return renderCheckResult();
   const n = game.i + 1;
+  const reviewing = game.i === 1 && Boolean(game.langReview);
   const body = [
     renderQOrient,
     renderQLang,
@@ -228,10 +242,10 @@ function renderCheckPlay() {
   renderCheckShell(
     `
       <p class="kicker">元気予報　${n} / 6</p>
-      ${checkTimerHtml()}
+      ${reviewing ? "" : checkTimerHtml()}
       ${body(game)}
     `,
-    { timer: true }
+    { timer: !reviewing }
   );
   bindCheckQuestion(game);
 }
@@ -257,13 +271,32 @@ function renderQOrient() {
 
 function renderQLang(game) {
   const set = game.animalSet || ANIMAL_SETS[0];
+  if (game.langReview) {
+    const review = game.langReview;
+    const examples = animalExamples(set);
+    const yours = [game.lang, game.lang2].filter(Boolean).join(" / ") || "（まだ書けていません）";
+    return `
+      <h1 class="theme">「${escapeHtml(set.kana)}」から始まる<br />動物を 2つ</h1>
+      <div class="nazo-aha ${review.ok ? "" : "ng"}">
+        <p class="nazo-aha-title">${review.ok ? "正解！" : review.timed ? "時間切れ" : "おしい！"}</p>
+        <p class="nazo-exp">あなたの答え：${escapeHtml(yours)}</p>
+        <p class="nazo-exp">たとえば「${escapeHtml(set.kana)}」なら、${escapeHtml(examples)} などです。</p>
+        <p class="nazo-exp">「${escapeHtml(set.kana)}」から始まるちがう動物を、2つ思い出す問題です。</p>
+        <button class="primary" type="button" data-check-next>次の問題へ進む</button>
+      </div>
+    `;
+  }
   return `
-    <h1 class="theme">「${escapeHtml(set.kana)}」から始まる<br />動物を 2つ</h1>
-    <p class="help">ちがう動物を、2つ自分で書いてください。</p>
+    <h1 class="theme">「${escapeHtml(set.kana)}」から始まる<br />動物を 2つ書いてください</h1>
+    <p class="help">選択肢はありません。思い出したなまえを、2つ自分で書いてください。</p>
     <p class="check-lab">1つ目</p>
-    <input class="pill" data-lang-in maxlength="12" placeholder="なまえを書く" />
+    <input class="pill nazo-in" data-lang-in maxlength="12" placeholder="なまえを書く" value="${escapeHtml(
+      game.lang || ""
+    )}" />
     <p class="check-lab">2つ目</p>
-    <input class="pill" data-lang2-in maxlength="12" placeholder="もうひとつ書く" />
+    <input class="pill nazo-in" data-lang2-in maxlength="12" placeholder="もうひとつ書く" value="${escapeHtml(
+      game.lang2 || ""
+    )}" />
     <button class="primary" type="button" data-check-ok>これで答える</button>
   `;
 }
@@ -326,6 +359,13 @@ function renderQMeaning(game) {
   `;
 }
 
+function animalExamples(set, n = 4) {
+  return (set.items || [])
+    .slice(0, n)
+    .map((item) => item.key)
+    .join("、");
+}
+
 function animalKey(typed, set) {
   const t = toHira(typed);
   if (!t) return "";
@@ -337,6 +377,14 @@ function twoAnimalsOk(a, b, set) {
   const k1 = animalKey(a, set);
   const k2 = animalKey(b, set);
   return Boolean(k1 && k2 && k1 !== k2);
+}
+
+function showAnimalReview(ok, timed) {
+  const game = ensureCheck();
+  stopCheckTimer();
+  game.langReview = { ok: Boolean(ok), timed: Boolean(timed) };
+  if (typeof quizBeep === "function") quizBeep(ok);
+  renderCheckPlay();
 }
 
 function bindCheckQuestion(game) {
@@ -359,6 +407,10 @@ function bindCheckQuestion(game) {
   app.querySelector("[data-hint]")?.addEventListener("click", () => {
     const box = app.querySelector("[data-hint-box]");
     if (box) box.hidden = false;
+  });
+  app.querySelector("[data-check-next]")?.addEventListener("click", () => {
+    const ok = Boolean(game.langReview && game.langReview.ok);
+    finishCheckItem(ok, "language");
   });
   app.querySelectorAll("[data-mood]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -419,7 +471,7 @@ function bindCheckQuestion(game) {
     }
     if (step === 1) {
       const set = game.animalSet || ANIMAL_SETS[0];
-      finishCheckItem(twoAnimalsOk(game.lang, game.lang2, set), "language");
+      showAnimalReview(twoAnimalsOk(game.lang, game.lang2, set), false);
       return;
     }
     if (step === 3) {

@@ -431,8 +431,8 @@ const BRAIN_INTRO = {
     lead: "ダジャレやひらめきで、頭の固まりをほぐします。時間を競いません。",
     steps: [
       "制限時間はありません。ゆっくり考えてください。",
-      "ピンと来た答えを、大きなボタンで押します。",
-      "当たったら「なるほど！」と解説が出ます。メダルは自分との記録です。",
+      "思い浮かんだ答えを、自分で書いてください。",
+      "当たっても外れても解説が出ます。確認してから次へ進めます。",
     ],
   },
 };
@@ -1024,11 +1024,39 @@ function renderMood() {
 const NAZO_KEY = "nicopoke-nazo-v1";
 const NAZO_ROUND = 8;
 
-function nazoChoices(item) {
-  const foils = shuffleList(
-    NAZO_QUIZ.filter((q) => q.id !== item.id && q.answer !== item.answer && q.answer !== "影")
-  ).slice(0, 2);
-  return shuffleList([item.answer].concat(foils.map((q) => q.answer)));
+function nazoTypedOk(typed, q) {
+  const t = toHira(typed);
+  if (!t) return false;
+  const extras = {
+    トイレットペーパー: ["ぺーぱー", "ペーパー", "トイレットぺーパー"],
+    年: ["とし", "ねんれい", "年齢"],
+    影: ["かげ"],
+    鉛筆: ["えんぴつ", "エンピツ"],
+    "自分の影": ["じぶんのかげ"],
+    "鏡に映った自分": ["かがみ", "鏡", "かがみにうつったじぶん"],
+    足し算: ["たしざん"],
+    秘密: ["ひみつ"],
+    本: ["ほん"],
+    食後: ["しょくご"],
+    Tシャツ: ["てぃーしゃつ", "ティーシャツ", "tしゃつ"],
+    引っ張りだこ: ["ひっぱりだこ"],
+    お隣: ["おとなり", "隣"],
+    抽選会: ["ちゅうせんかい"],
+    キウイ: ["きうい", "きういふるーつ"],
+    湯船: ["ゆぶね"],
+    錨: ["いかり"],
+    耳: ["みみ"],
+    写真: ["しゃしん"],
+    水仙: ["すいせん"],
+    神輿: ["みこし"],
+    昆布茶: ["こぶちゃ"],
+    電話: ["でんわ"],
+    酸っぱい: ["すっぱい"],
+    焼きもち: ["やきもち"],
+    キャプテン: ["きゃぷてん"],
+  };
+  const answers = [q.answer].concat(q.also || []).concat(extras[q.answer] || []);
+  return answers.some((a) => toHira(a) === t);
 }
 
 function startNazo() {
@@ -1040,9 +1068,8 @@ function startNazo() {
       answer: q.answer,
       category: q.category,
       explanation: q.explanation,
-      choices: nazoChoices(q),
     }));
-  window.__nazo = { items, i: 0, solved: false, misses: [], score: 0, firsts: [] };
+  window.__nazo = { items, i: 0, solved: false, typed: "", ok: false, score: 0, firsts: [] };
 }
 
 function ensureNazo() {
@@ -1108,58 +1135,53 @@ function renderNazo() {
       <p class="kicker">ナゾナゾ　${n} / ${total}　${escapeHtml(q.category)}</p>
       <div class="nazo-card">
         <p class="nazo-q">${escapeHtml(q.question)}</p>
-        <div class="nazo-choices">
-          ${q.choices
-            .map((c) => {
-              const miss = game.misses.includes(c);
-              const yes = game.solved && c === q.answer;
-              return `<button type="button" class="nazo-opt ${miss ? "no" : ""} ${yes ? "yes" : ""}" data-nazo="${escapeHtml(
-                c
-              )}" ${game.solved || miss ? "disabled" : ""}>${escapeHtml(c)}</button>`;
-            })
-            .join("")}
-        </div>
         ${
           game.solved
-            ? `<div class="nazo-aha">
-                 <p class="nazo-aha-title">なるほど！</p>
-                 <p class="nazo-medal">${already && !game.firsts.includes(q.id) ? "🌸" : "🏅"} ${
-                   game.firsts.includes(q.id) ? "新しいメダル" : "ひらめきました"
-                 }</p>
+            ? `<div class="nazo-aha ${game.ok ? "" : "ng"}">
+                 <p class="nazo-aha-title">${game.ok ? "なるほど！" : "おしい！"}</p>
+                 ${
+                   game.ok
+                     ? `<p class="nazo-medal">${
+                         game.firsts.includes(q.id) ? "🏅 新しいメダル" : "🌸 ひらめきました"
+                       }</p>`
+                     : `<p class="nazo-exp">正解は「${escapeHtml(q.answer)}」です。</p>`
+                 }
                  <p class="nazo-exp">${escapeHtml(q.explanation)}</p>
                  <button class="primary" type="button" data-nazo-next>${
-                   n === total ? "結果を見る" : "つぎのナゾナゾへ"
+                   n === total ? "結果を見る" : "次の問題へ進む"
                  }</button>
                </div>`
-            : game.misses.length
-              ? `<p class="nazo-hint">おしい！焦らなくて大丈夫。ほかを押してみてください。</p>`
-              : `<p class="nazo-hint">ゆっくりで大丈夫。時間は数えません。</p>`
+            : `<p class="help">選択肢はありません。思い浮かんだ答えを書いてください。</p>
+               <input class="pill nazo-in" data-nazo-in maxlength="24" placeholder="なまえを書く" value="${escapeHtml(
+                 game.typed || ""
+               )}" />
+               <button class="primary" type="button" data-nazo-ok>これで答える</button>
+               <p class="nazo-hint">ゆっくりで大丈夫。時間は数えません。</p>`
         }
       </div>
     `,
     "brain"
   );
   bindTop();
-  app.querySelectorAll("[data-nazo]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (game.solved) return;
-      const picked = btn.dataset.nazo;
-      if (game.misses.includes(picked)) return;
-      if (picked === q.answer) {
-        game.solved = true;
-        game.score += 1;
-        if (!already) game.firsts.push(q.id);
-        quizBeep(true);
-      } else {
-        game.misses.push(picked);
-      }
-      renderNazo();
-    });
+  app.querySelector("[data-nazo-in]")?.addEventListener("input", (e) => {
+    game.typed = e.target.value;
+  });
+  app.querySelector("[data-nazo-ok]")?.addEventListener("click", () => {
+    if (game.solved) return;
+    game.ok = nazoTypedOk(game.typed, q);
+    game.solved = true;
+    if (game.ok) {
+      game.score += 1;
+      if (!already) game.firsts.push(q.id);
+      quizBeep(true);
+    }
+    renderNazo();
   });
   app.querySelector("[data-nazo-next]")?.addEventListener("click", () => {
     game.i += 1;
     game.solved = false;
-    game.misses = [];
+    game.ok = false;
+    game.typed = "";
     if (game.i >= game.items.length) {
       location.hash = "#/brain/nazo/result";
       renderNazoResult();
