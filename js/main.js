@@ -728,7 +728,7 @@ function renderMe() {
         <span class="text">参加コード</span>
         <div class="code">${escapeHtml(group.code)}</div>
         <button class="pill-btn" type="button" data-copy-code>コードをコピー</button>
-        <p class="help">このコードを伝えて、ログイン画面の「参加コードで入る」から同じグループに入れます。必ず【同じ公開ページ】を開いてください。</p>
+        <p class="help">このコードを伝えて、ログイン画面の「参加コードで入る」から同じグループに入れます。同じ公開サイトを開いていれば入れます。</p>
       </div>
       <form data-add>
         <p class="kicker">この端末にメンバーを追加</p>
