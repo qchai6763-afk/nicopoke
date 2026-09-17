@@ -4,10 +4,242 @@ function brainKind() {
   return parts[1] || "";
 }
 
-function brainPlaying() {
+function brainStage() {
   const raw = (location.hash.replace(/^#/, "") || "").split("?")[0];
   const parts = raw.split("/").filter(Boolean);
-  return parts[2] === "play";
+  return parts[2] || "";
+}
+
+function brainPlaying() {
+  return brainStage() === "play";
+}
+
+const PLAY_TIME_KEY = "nicopoke-playtimes-v1";
+const PLAY_RANK_CUTS = {
+  memory: [
+    { max: 45000, title: "達人級！", medal: "🥇" },
+    { max: 80000, title: "名人級！", medal: "🥈" },
+    { max: 120000, title: "よくできました！", medal: "🥉" },
+    { max: Infinity, title: "チャレンジ賞！", medal: "🌸" },
+  ],
+  kana: [
+    { max: 90000, title: "達人級！", medal: "🥇" },
+    { max: 150000, title: "名人級！", medal: "🥈" },
+    { max: 240000, title: "よくできました！", medal: "🥉" },
+    { max: Infinity, title: "チャレンジ賞！", medal: "🌸" },
+  ],
+  quiz: [
+    { max: 60000, title: "達人級！", medal: "🥇" },
+    { max: 100000, title: "名人級！", medal: "🥈" },
+    { max: 160000, title: "よくできました！", medal: "🥉" },
+    { max: Infinity, title: "チャレンジ賞！", medal: "🌸" },
+  ],
+  order: [
+    { max: 12000, title: "達人級！", medal: "🥇" },
+    { max: 20000, title: "名人級！", medal: "🥈" },
+    { max: 35000, title: "よくできました！", medal: "🥉" },
+    { max: Infinity, title: "チャレンジ賞！", medal: "🌸" },
+  ],
+  space: [
+    { max: 25000, title: "達人級！", medal: "🥇" },
+    { max: 40000, title: "名人級！", medal: "🥈" },
+    { max: 60000, title: "よくできました！", medal: "🥉" },
+    { max: Infinity, title: "チャレンジ賞！", medal: "🌸" },
+  ],
+  mood: [
+    { max: 25000, title: "達人級！", medal: "🥇" },
+    { max: 40000, title: "名人級！", medal: "🥈" },
+    { max: 60000, title: "よくできました！", medal: "🥉" },
+    { max: Infinity, title: "チャレンジ賞！", medal: "🌸" },
+  ],
+};
+
+function formatPlayClock(ms) {
+  const t = Math.max(0, Number(ms) || 0);
+  const m = Math.floor(t / 60000);
+  const s = Math.floor((t % 60000) / 1000);
+  const d = Math.floor((t % 1000) / 100);
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${d}`;
+}
+
+function formatPlaySeconds(ms) {
+  return (Math.max(0, Number(ms) || 0) / 1000).toFixed(1);
+}
+
+function playClockHtml() {
+  const run = window.__playRun;
+  const frozen = run && run.clearedAt ? run.ms : 0;
+  const label = run && run.clearedAt ? formatPlayClock(frozen) : "00:00.0";
+  return `<div class="play-clock"><span data-play-clock>${label}</span></div>`;
+}
+
+function stopPlayClock() {
+  if (window.__playTick) {
+    window.clearInterval(window.__playTick);
+    window.__playTick = 0;
+  }
+}
+
+function ensurePlayRun(kind) {
+  const run = window.__playRun;
+  if (!run || run.kind !== kind) {
+    window.__playRun = { kind, startedAt: Date.now(), clearedAt: 0, ms: 0, entryId: 0 };
+  }
+  return window.__playRun;
+}
+
+function startPlayClock(kind) {
+  const run = ensurePlayRun(kind);
+  stopPlayClock();
+  const paint = () => {
+    const el = app.querySelector("[data-play-clock]");
+    if (!el) return;
+    if (run.clearedAt) {
+      el.textContent = formatPlayClock(run.ms);
+      return;
+    }
+    el.textContent = formatPlayClock(Date.now() - run.startedAt);
+  };
+  paint();
+  if (!run.clearedAt) window.__playTick = window.setInterval(paint, 100);
+}
+
+function loadPlayTimes() {
+  try {
+    return JSON.parse(localStorage.getItem(PLAY_TIME_KEY) || "{}") || {};
+  } catch {
+    return {};
+  }
+}
+
+function playTimesFor(kind) {
+  const user = currentUser();
+  const uid = (user && user.id) || "guest";
+  const all = loadPlayTimes();
+  return ((all[uid] && all[uid][kind]) || []).slice();
+}
+
+function savePlayTime(kind, ms) {
+  const user = currentUser();
+  const uid = (user && user.id) || "guest";
+  const all = loadPlayTimes();
+  if (!all[uid]) all[uid] = {};
+  if (!all[uid][kind]) all[uid][kind] = [];
+  const entry = { id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`, ms, at: Date.now() };
+  all[uid][kind].push(entry);
+  all[uid][kind] = all[uid][kind].slice(-40);
+  localStorage.setItem(PLAY_TIME_KEY, JSON.stringify(all));
+  return entry;
+}
+
+function topPlayTimes(kind, n = 3) {
+  return playTimesFor(kind)
+    .slice()
+    .sort((a, b) => a.ms - b.ms)
+    .slice(0, n);
+}
+
+function playRank(kind, ms) {
+  const rows = PLAY_RANK_CUTS[kind] || PLAY_RANK_CUTS.order;
+  return rows.find((r) => ms <= r.max) || rows[rows.length - 1];
+}
+
+function finishPlayTimed(kind) {
+  const run = ensurePlayRun(kind);
+  if (!run.clearedAt) {
+    run.clearedAt = Date.now();
+    run.ms = Math.max(0, run.clearedAt - run.startedAt);
+    const entry = savePlayTime(kind, run.ms);
+    run.entryId = entry.id;
+  }
+  stopPlayClock();
+  return run;
+}
+
+function goPlayResult(kind) {
+  finishPlayTimed(kind);
+  location.hash = `#/brain/${kind}/result`;
+  renderPlayResult(kind);
+}
+
+function freshBrainGame(kind) {
+  if (kind === "memory") window.__memory = memoryFaces();
+  if (kind === "kana") window.__hunt = makeWordHunt();
+  if (kind === "quiz") startQuiz();
+  if (kind === "order") window.__order = null;
+  if (kind === "space") window.__space = null;
+  if (kind === "mood") window.__mood = null;
+}
+
+function restartBrainGame(kind) {
+  stopPlayClock();
+  freshBrainGame(kind);
+  window.__playRun = { kind, startedAt: Date.now(), clearedAt: 0, ms: 0, entryId: 0 };
+  location.hash = `#/brain/${kind}/play`;
+  renderBrain();
+}
+
+function playResultNote(kind) {
+  if (kind === "quiz" && window.__quiz) {
+    return `${window.__quiz.score} / ${window.__quiz.items.length} 問 正解`;
+  }
+  if (kind === "mood" && window.__mood) {
+    return `${window.__mood.score} / ${window.__mood.qs.length} 問 正解`;
+  }
+  if (kind === "space" && window.__space) {
+    return `${window.__space.ok} / ${window.__space.total} 問 できた`;
+  }
+  return "";
+}
+
+function renderPlayResult(kind) {
+  stopPlayClock();
+  const run = window.__playRun;
+  if (!run || run.kind !== kind || !run.clearedAt) {
+    location.hash = `#/brain/${kind}`;
+    return renderBrainIntro(kind);
+  }
+  const info = BRAIN_GAMES.find((g) => g.id === kind) || { title: "脳トレ" };
+  const rank = playRank(kind, run.ms);
+  const tops = topPlayTimes(kind, 3);
+  const best = tops[0];
+  const isBest = best && best.id === run.entryId;
+  const note = playResultNote(kind);
+  app.innerHTML = chrome(
+    `
+      <a class="back-link" href="#/brain">← 脳トレ一覧</a>
+      <p class="kicker">${escapeHtml(info.title)}</p>
+      <h1 class="theme">クリア！</h1>
+      <div class="play-result">
+        <p class="play-time-label">今回のクリアタイム</p>
+        <p class="play-time-big">${formatPlaySeconds(run.ms)}秒！</p>
+        <p class="play-rank"><span>${rank.medal}</span>${escapeHtml(rank.title)}</p>
+        ${isBest ? `<p class="play-pb">自己ベスト更新！過去の自分をこえました</p>` : ""}
+        ${note ? `<p class="help">${escapeHtml(note)}</p>` : ""}
+        <p class="check-lab">あなたの歴代トップ3</p>
+        <ol class="play-tops">
+          ${
+            tops.length
+              ? tops
+                  .map((row, i) => {
+                    const now = row.id === run.entryId;
+                    return `<li class="${now ? "now" : ""}"><em>${i + 1}</em><b>${formatPlaySeconds(
+                      row.ms
+                    )}秒</b>${now ? "<span>今回</span>" : ""}</li>`;
+                  })
+                  .join("")
+              : `<li>まだ記録がありません</li>`
+          }
+        </ol>
+        <p class="help">だれかと比べるものではありません。昨日の自分より、楽しく続けましょう。</p>
+        <button class="primary" type="button" data-play-again>もう一度挑戦する</button>
+        <a class="ghost" href="#/brain">6つの脳トレ一覧</a>
+      </div>
+    `,
+    "brain"
+  );
+  bindTop();
+  app.querySelector("[data-play-again]")?.addEventListener("click", () => restartBrainGame(kind));
 }
 
 function shuffleList(list) {
@@ -213,8 +445,7 @@ function renderBrainIntro(kind) {
   );
   bindTop();
   app.querySelector("[data-brain-start]")?.addEventListener("click", () => {
-    location.hash = `#/brain/${kind}/play`;
-    renderBrain();
+    restartBrainGame(kind);
   });
 }
 
@@ -227,28 +458,35 @@ function renderBrain() {
   const kind = brainKind();
   const playing = brainPlaying();
   if (kind !== "check") stopCheckTimer();
+  if (brainStage() !== "play") stopPlayClock();
   if (kind === "check") return renderCheck();
   if (kind === "memory") {
+    if (brainStage() === "result") return renderPlayResult("memory");
     if (!playing) return renderBrainIntro("memory");
     return renderMemory();
   }
   if (kind === "kana") {
+    if (brainStage() === "result") return renderPlayResult("kana");
     if (!playing) return renderBrainIntro("kana");
     return renderKana();
   }
   if (kind === "quiz") {
+    if (brainStage() === "result") return renderPlayResult("quiz");
     if (!playing) return renderBrainIntro("quiz");
     return renderQuiz();
   }
   if (kind === "order") {
+    if (brainStage() === "result") return renderPlayResult("order");
     if (!playing) return renderBrainIntro("order");
     return renderOrder();
   }
   if (kind === "space") {
+    if (brainStage() === "result") return renderPlayResult("space");
     if (!playing) return renderBrainIntro("space");
     return renderSpace();
   }
   if (kind === "mood") {
+    if (brainStage() === "result") return renderPlayResult("mood");
     if (!playing) return renderBrainIntro("mood");
     return renderMood();
   }
@@ -298,11 +536,14 @@ function renderMemory() {
     bindTop();
     return;
   }
+  if (game.won) return goPlayResult("memory");
+  startPlayClock("memory");
   const remain = game.cards.filter((c) => !c.done).length;
   app.innerHTML = chrome(
     `
       <a class="back-link" href="#/brain">← 脳トレ一覧</a>
       <p class="kicker">思い出神経衰弱</p>
+      ${playClockHtml()}
       <h1 class="theme">同じ写真をさがす</h1>
       <p class="help">家族の投稿写真がカードになっています。同じ思い出を2枚そろえてください。</p>
       <div class="memo">
@@ -353,8 +594,7 @@ function renderMemory() {
     });
   });
   app.querySelector("[data-new-memo]")?.addEventListener("click", () => {
-    window.__memory = memoryFaces();
-    renderMemory();
+    restartBrainGame("memory");
   });
 }
 
@@ -362,11 +602,14 @@ function renderKana() {
   const game = ensureHunt();
   const current = pathWord(game);
   const left = game.words.filter((w) => !game.found.includes(w));
-  const done = left.length === 0;
+  const done = left.length === 0 && game.words.length > 0;
+  if (done) return goPlayResult("kana");
+  startPlayClock("kana");
   app.innerHTML = chrome(
     `
       <a class="back-link" href="#/brain">← 脳トレ一覧</a>
       <p class="kicker">ひらがな探し</p>
+      ${playClockHtml()}
       <h1 class="theme">${game.found.length} / ${game.words.length} ことば</h1>
       <p class="help">となり合うマスを1つずつ押して、ことばをつなぎます。同じマスをもう一度押すと、ひとつ戻ります。</p>
       <p class="kana-out">${escapeHtml(current) || "ことばをつなぐ"}</p>
@@ -393,7 +636,6 @@ function renderKana() {
           )
           .join("")}
       </div>
-      ${done ? `<p class="ok brain-ok">全部見つけました！</p>` : ""}
       <button class="ghost" type="button" data-hunt-clear>いまの線を消す</button>
       <button class="reroll" type="button" data-hunt-new>別の盤面</button>
     `,
@@ -438,8 +680,7 @@ function renderKana() {
     renderKana();
   });
   app.querySelector("[data-hunt-new]")?.addEventListener("click", () => {
-    window.__hunt = makeWordHunt();
-    renderKana();
+    restartBrainGame("kana");
   });
 }
 
@@ -517,27 +758,8 @@ function ensureQuiz() {
 function renderQuiz() {
   const game = ensureQuiz();
   const total = game.items.length;
-  if (game.i >= total) {
-    app.innerHTML = chrome(
-      `
-        <a class="back-link" href="#/brain">← 脳トレ一覧</a>
-        <div class="quiz-show">
-          <div class="quiz-ep">終了</div>
-          <p class="quiz-q">本日の成績</p>
-          <p class="quiz-score">${game.score} / ${total} 問 正解</p>
-          <p class="quiz-host">ありがとうございました。また次回もよろしくお願いいたします。</p>
-          <button class="quiz-next" type="button" data-quiz-again>もう一度チャレンジ</button>
-        </div>
-      `,
-      "brain"
-    );
-    bindTop();
-    app.querySelector("[data-quiz-again]")?.addEventListener("click", () => {
-      startQuiz();
-      renderQuiz();
-    });
-    return;
-  }
+  if (game.i >= total) return goPlayResult("quiz");
+  startPlayClock("quiz");
   const q = game.items[game.i];
   const n = game.i + 1;
   const solved = game.solved;
@@ -547,6 +769,7 @@ function renderQuiz() {
   app.innerHTML = chrome(
     `
       <a class="back-link" href="#/brain">← 脳トレ一覧</a>
+      ${playClockHtml()}
       <div class="quiz-show">
         <div class="quiz-ep">第 ${n} 問　／　全 ${total} 問</div>
         <p class="quiz-q">「${escapeHtml(q.short)}」は<br />何の略？</p>
@@ -634,7 +857,7 @@ function renderQuiz() {
 }
 
 function ensureOrder() {
-  if (!window.__order || window.__order.won) {
+  if (!window.__order) {
     window.__order = { next: 1, max: 8, won: false, layout: shuffleList([1, 2, 3, 4, 5, 6, 7, 8]) };
   }
   return window.__order;
@@ -642,10 +865,13 @@ function ensureOrder() {
 
 function renderOrder() {
   const game = ensureOrder();
+  if (game.won) return goPlayResult("order");
+  startPlayClock("order");
   app.innerHTML = chrome(
     `
       <a class="back-link" href="#/brain">← 脳トレ一覧</a>
       <p class="kicker">数字タッチ</p>
+      ${playClockHtml()}
       <h1 class="theme">${game.won ? "全部押せました！" : `つぎは ${game.next}`}</h1>
       <p class="help">1から ${game.max} まで、小さい順に押してください。まちがえたら 1 からやり直しです。</p>
       <div class="num-scatter">${game.layout
@@ -676,8 +902,7 @@ function renderOrder() {
     });
   });
   app.querySelector("[data-order-new]")?.addEventListener("click", () => {
-    window.__order = null;
-    renderOrder();
+    restartBrainGame("order");
   });
 }
 
@@ -695,27 +920,25 @@ function ensureSpace() {
 
 function renderSpace() {
   const game = ensureSpace();
-  const done = game.round >= game.total;
+  if (game.round >= game.total) return goPlayResult("space");
+  startPlayClock("space");
   app.innerHTML = chrome(
     `
       <a class="back-link" href="#/brain">← 脳トレ一覧</a>
       <p class="kicker">かたち合わせ</p>
-      <h1 class="theme">${done ? `${game.ok} / ${game.total} 問 できました` : `見本 ${game.round + 1} / ${game.total}`}</h1>
-      ${
-        done
-          ? `<button class="primary" type="button" data-space-new>もう一度</button>`
-          : `<p class="help">上の見本と同じマスを、下で押してください。もう一度押すと消えます。</p>
-             <p class="check-lab">見本</p>
-             ${shapeTiles(game.target)}
-             <p class="check-lab">あなたの答え</p>
-             <div class="shape-grid play">${[0, 1, 2, 3, 4, 5, 6, 7, 8]
-               .map(
-                 (i) =>
-                   `<button type="button" class="${game.pick.includes(i) ? "on" : ""}" data-cell="${i}"></button>`
-               )
-               .join("")}</div>
-             <button class="primary" type="button" data-space-ok>できた</button>`
-      }
+      ${playClockHtml()}
+      <h1 class="theme">見本 ${game.round + 1} / ${game.total}</h1>
+      <p class="help">上の見本と同じマスを、下で押してください。もう一度押すと消えます。</p>
+      <p class="check-lab">見本</p>
+      ${shapeTiles(game.target)}
+      <p class="check-lab">あなたの答え</p>
+      <div class="shape-grid play">${[0, 1, 2, 3, 4, 5, 6, 7, 8]
+        .map(
+          (i) =>
+            `<button type="button" class="${game.pick.includes(i) ? "on" : ""}" data-cell="${i}"></button>`
+        )
+        .join("")}</div>
+      <button class="primary" type="button" data-space-ok>できた</button>
     `,
     "brain"
   );
@@ -737,10 +960,6 @@ function renderSpace() {
     game.pick = [];
     renderSpace();
   });
-  app.querySelector("[data-space-new]")?.addEventListener("click", () => {
-    window.__space = null;
-    renderSpace();
-  });
 }
 
 function ensureMood() {
@@ -755,29 +974,14 @@ function ensureMood() {
 
 function renderMood() {
   const game = ensureMood();
-  if (game.i >= game.qs.length) {
-    app.innerHTML = chrome(
-      `
-        <a class="back-link" href="#/brain">← 脳トレ一覧</a>
-        <p class="kicker">きもち読み</p>
-        <h1 class="theme">${game.score} / ${game.qs.length} 問</h1>
-        <p class="help">顔と気持ちを、ゆっくり合わせる練習です。</p>
-        <button class="primary" type="button" data-mood-new>もう一度</button>
-      `,
-      "brain"
-    );
-    bindTop();
-    app.querySelector("[data-mood-new]")?.addEventListener("click", () => {
-      window.__mood = null;
-      renderMood();
-    });
-    return;
-  }
+  if (game.i >= game.qs.length) return goPlayResult("mood");
+  startPlayClock("mood");
   const q = game.qs[game.i];
   app.innerHTML = chrome(
     `
       <a class="back-link" href="#/brain">← 脳トレ一覧</a>
       <p class="kicker">きもち読み　${game.i + 1} / ${game.qs.length}</p>
+      ${playClockHtml()}
       <h1 class="theme">この人は、どんな気持ち？</h1>
       <div class="mood-hero">${moodVisual(q.id, q.photo)}</div>
       <div class="palette">${MOODS.map(
