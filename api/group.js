@@ -3,6 +3,9 @@ const PREFIX = "nicopoke-groups/";
 
 function cors(res) {
   res.setHeader("Content-Type", "application/json");
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.setHeader("CDN-Cache-Control", "no-store");
+  res.setHeader("Vercel-CDN-Cache-Control", "no-store");
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, PUT, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Join-Code");
@@ -206,6 +209,7 @@ async function blobRequest(api, query, token, storeId, method, body) {
           "x-add-random-suffix": "0",
           "x-allow-overwrite": "1",
           "x-content-type": "application/json",
+          "x-cache-control-max-age": "60",
         }
       : {}),
     body,
@@ -237,7 +241,11 @@ function blobStore(token) {
               "GET"
             );
             if (meta.ok && meta.json) {
-              const fromMeta = parseGroup(await readJsonUrl(meta.json.url || meta.json.downloadUrl));
+              const blobUrl = meta.json.url || meta.json.downloadUrl;
+              const bust = blobUrl
+                ? `${blobUrl}${blobUrl.includes("?") ? "&" : "?"}t=${Date.now()}`
+                : "";
+              const fromMeta = parseGroup(await readJsonUrl(bust));
               if (fromMeta) return fromMeta;
             }
           } catch {
@@ -247,7 +255,9 @@ function blobStore(token) {
       }
       if (storeId) {
         const fromPublic = parseGroup(
-          await readJsonUrl(`https://${storeId}.public.blob.vercel-storage.com/${path}`)
+          await readJsonUrl(
+            `https://${storeId}.public.blob.vercel-storage.com/${path}?t=${Date.now()}`
+          )
         );
         if (fromPublic) return fromPublic;
       }
