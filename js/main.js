@@ -833,7 +833,12 @@ window.setInterval(() => {
   refreshFromCloud().then((changed) => {
     if (changed) render();
   });
-}, 8000);
+}, 3000);
+window.addEventListener("focus", () => {
+  refreshFromCloud().then((changed) => {
+    if (changed) render();
+  });
+});
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "visible") return;
   refreshFromCloud().then((changed) => {
