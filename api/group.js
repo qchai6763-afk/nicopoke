@@ -168,16 +168,41 @@ async function readJsonUrl(url) {
   return res.json().catch(() => null);
 }
 
+async function sdkPut(path, data, token) {
+  const { put } = await import("@vercel/blob");
+  const options = {
+    access: "public",
+    addRandomSuffix: false,
+    allowOverwrite: true,
+    contentType: "application/json",
+  };
+  if (token) options.token = token;
+  return put(path, JSON.stringify(data), options);
+}
+
+async function sdkHead(path, token) {
+  const { head } = await import("@vercel/blob");
+  const options = token ? { token } : {};
+  return head(path, options);
+}
+
 function blobStore(token) {
   const storeId = storeIdFromToken(token);
   return {
     async get(key) {
       const path = blobPath(key);
+      try {
+        const meta = await sdkHead(path, token);
+        const fromSdk = parseGroup(await readJsonUrl(meta && meta.url));
+        if (fromSdk) return fromSdk;
+      } catch {
+        /* fall through */
+      }
       const metaRes = await fetch(
         `https://blob.vercel-storage.com/?url=${encodeURIComponent(path)}`,
         { method: "GET", headers: blobHeaders(token), cache: "no-store" }
       );
-      if (metaRes.ok) {
+      if (token && metaRes.ok) {
         const meta = await metaRes.json().catch(() => null);
         const fromMeta = parseGroup(await readJsonUrl(meta && (meta.url || meta.downloadUrl)));
         if (fromMeta) return fromMeta;
@@ -188,64 +213,42 @@ function blobStore(token) {
         );
         if (fromPublic) return fromPublic;
       }
-      const listed = await fetch(
-        `https://blob.vercel-storage.com/?prefix=${encodeURIComponent(path)}&limit=10`,
-        { method: "GET", headers: blobHeaders(token), cache: "no-store" }
-      );
-      if (listed.ok) {
-        const payload = await listed.json().catch(() => null);
-        const blobs = (payload && payload.blobs) || [];
-        const hit = blobs.find((b) => b && (b.pathname === path || String(b.pathname || "").startsWith(path.replace(/\.json$/, ""))));
-        const fromList = parseGroup(await readJsonUrl(hit && hit.url));
-        if (fromList) return fromList;
-      }
       return null;
     },
     async set(key, data) {
       const path = blobPath(key);
-      const res = await fetch(
-        `https://blob.vercel-storage.com/?pathname=${encodeURIComponent(path)}`,
-        {
-          method: "PUT",
-          headers: Object.assign({}, blobHeaders(token), {
-            "x-vercel-blob-access": "public",
-            "x-add-random-suffix": "0",
-            "x-allow-overwrite": "1",
-            "x-content-type": "application/json",
-          }),
-          body: JSON.stringify(data),
-        }
-      );
-      const body = await res.text();
-      if (!res.ok) {
-        throw new Error(`blob save failed (${res.status}): ${body.slice(0, 300)}`);
-      }
-      let parsed = null;
       try {
-        parsed = JSON.parse(body);
-      } catch {
-        parsed = null;
+        const saved = await sdkPut(path, data, token);
+        const written = parseGroup(await readJsonUrl(saved && saved.url)) || parseGroup(data);
+        if (!written) throw new Error("blob save returned no group");
+        return written;
+      } catch (sdkErr) {
+        if (!token) throw sdkErr;
+        const res = await fetch(
+          `https://blob.vercel-storage.com/?pathname=${encodeURIComponent(path)}`,
+          {
+            method: "PUT",
+            headers: Object.assign({}, blobHeaders(token), {
+              "x-vercel-blob-access": "public",
+              "x-add-random-suffix": "0",
+              "x-allow-overwrite": "1",
+              "x-content-type": "application/json",
+            }),
+            body: JSON.stringify(data),
+          }
+        );
+        const body = await res.text();
+        if (!res.ok) {
+          throw new Error(`blob save failed (${res.status}): ${body.slice(0, 300)}`);
+        }
+        return parseGroup(data);
       }
-      const written = parseGroup(await readJsonUrl(parsed && parsed.url)) || parseGroup(data);
-      if (!written) throw new Error("blob save returned no group");
-      return written;
     },
   };
 }
 
 function makeStore() {
-  const token = blobToken();
-  if (!token) {
-    return {
-      async get() {
-        return null;
-      },
-      async set() {
-        throw new Error("BLOB_READ_WRITE_TOKEN is not set");
-      },
-    };
-  }
-  return blobStore(token);
+  return blobStore(blobToken());
 }
 
 module.exports = async function handler(req, res) {
@@ -258,7 +261,12 @@ module.exports = async function handler(req, res) {
 
     const url = new URL(req.url, "http://localhost");
     if (url.searchParams.get("ping")) {
-      send(res, 200, { ok: true, store: STORE_NAME, blob: Boolean(blobToken()) });
+      send(res, 200, {
+        ok: true,
+        store: STORE_NAME,
+        blob: Boolean(blobToken()),
+        oidc: Boolean(process.env.VERCEL_OIDC_TOKEN),
+      });
       return;
     }
 
