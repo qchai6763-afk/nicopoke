@@ -169,14 +169,6 @@ function findGroupByCode(code) {
   return state.groups.find((g) => normalizeCode(g.code) === c) || null;
 }
 
-function uniqueList(items) {
-  const out = [];
-  items.forEach((item) => {
-    if (item && !out.includes(item)) out.push(item);
-  });
-  return out;
-}
-
 function rememberedCloudOrigin() {
   try {
     return localStorage.getItem(CLOUD_ORIGIN_KEY) || "";
@@ -201,41 +193,13 @@ function isStaticHost(hostname) {
   return /\.github\.io$/i.test(host);
 }
 
-function cloudPathsForOrigin(origin) {
-  const paths = ["/api/group"];
-  try {
-    const host = new URL(origin).hostname;
-    if (/netlify\.app$/i.test(host) || /netlify\.com$/i.test(host)) {
-      paths.push("/.netlify/functions/group");
-    }
-  } catch {
-    /* keep /api/group only */
-  }
-  return paths;
-}
-
-function cloudOrigins() {
-  const extra = String(window.NICOPOKE_CLOUD || "").replace(/\/$/, "");
-  const remembered = rememberedCloudOrigin().replace(/\/$/, "");
-  const here = String(location.origin || "").replace(/\/$/, "");
-  const origins = [];
-  if (here && !isStaticHost()) origins.push(here);
-  if (extra && extra !== here) origins.push(extra);
-  if (remembered && origins.includes(remembered)) origins.unshift(remembered);
-  return uniqueList(origins);
-}
-
 function cloudUrls(code) {
   const query = code
     ? `code=${encodeURIComponent(normalizeCode(code))}`
     : "ping=1";
-  const urls = [];
-  cloudOrigins().forEach((origin) => {
-    cloudPathsForOrigin(origin).forEach((path) => {
-      urls.push(`${origin}${path}?${query}`);
-    });
-  });
-  return uniqueList(urls);
+  const here = String(location.origin || "").replace(/\/$/, "");
+  if (!here || isStaticHost()) return [];
+  return [`${here}/api/group?${query}`];
 }
 
 function parseCloudBody(text) {
@@ -549,13 +513,13 @@ function buildUser({ name }) {
 function joinErrorFromCloud(remote) {
   const errorCode = remote && remote.data && remote.data.errorCode;
   if (errorCode === "NOT_FOUND") {
-    return "その参加コードのグループは見つかりませんでした。表示された6文字をまちがいなく入力してください。";
+    return "その参加コードのグループは、まだ共有保存されていません。つくった人のスマホで参加コードを開き、グループを作り直してから入力してください。";
   }
   if (errorCode === "BAD_CODE" || (remote.status === 400 && remote.data)) {
     return "参加コードの形式が正しくありません。4〜8文字の英数字か確かめてください。";
   }
   if (errorCode === "STORE_UNAVAILABLE" || errorCode === "SAVE_FAILED" || remote.status === 501) {
-    return "グループの共有サーバーに接続できません。少し待ってからもう一度試してください。";
+    return "グループの共有サーバーに保存できません。VercelのBlobがつながっているか確かめてください。";
   }
   if (!remote.data || remote.status === 0) {
     return "グループの共有サーバーに接続できませんでした。通信を確かめて、もう一度試してください。";
@@ -594,12 +558,12 @@ async function startGroup({ groupName, name }) {
   notify();
   const uploaded = await pushCloud(group.id);
   if (!uploaded) {
-    queueCloudSync(group.id);
+    state.currentUserId = null;
+    persist();
+    notify();
     return {
-      ok: true,
-      group,
-      user,
-      warn: "この端末には保存しました。友だちの参加用の共有保存は、自動でもう一度送ります。",
+      ok: false,
+      error: "グループを友だちと共有できませんでした。通信を確かめて、もう一度「つくる」を押してください。",
     };
   }
   return { ok: true, group, user };
@@ -612,9 +576,12 @@ async function joinWithCode({ code, name }) {
     return { ok: false, error: "参加コードは4〜8文字の英数字です" };
   }
   let remote = await fetchCloud(normalized);
-  if ((!remote.ok || !remote.data?.group) && (remote.status >= 500 || remote.status === 0)) {
-    await sleep(500);
-    remote = await fetchCloud(normalized);
+  if (!remote.ok || !remote.data?.group) {
+    for (let i = 0; i < 4; i += 1) {
+      await sleep(400 * (i + 1));
+      remote = await fetchCloud(normalized);
+      if (remote.ok && remote.data?.group) break;
+    }
   }
   if (remote.ok && remote.data && remote.data.group) {
     mergeSnapshot(remote.data);

@@ -133,22 +133,13 @@ function codeFromReq(req, payload) {
   return normalizeCode(rawReceived);
 }
 
-function memoryStore() {
-  const g = globalThis;
-  if (!g.__nicopokeGroups) g.__nicopokeGroups = new Map();
-  const map = g.__nicopokeGroups;
-  return {
-    async get(key) {
-      return map.get(key) || null;
-    },
-    async set(key, data) {
-      map.set(key, data);
-    },
-  };
-}
-
 function blobToken() {
-  return process.env.BLOB_READ_WRITE_TOKEN || process.env.NICOPOKE_BLOB_TOKEN || "";
+  return (
+    process.env.BLOB_READ_WRITE_TOKEN ||
+    process.env.NICOPOKE_BLOB_TOKEN ||
+    process.env.VERCEL_BLOB_READ_WRITE_TOKEN ||
+    ""
+  );
 }
 
 function storeIdFromToken(token) {
@@ -170,29 +161,45 @@ function blobHeaders(token) {
   return headers;
 }
 
+async function readJsonUrl(url) {
+  if (!url) return null;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) return null;
+  return res.json().catch(() => null);
+}
+
 function blobStore(token) {
   const storeId = storeIdFromToken(token);
   return {
     async get(key) {
       const path = blobPath(key);
-      if (storeId) {
-        const published = await fetch(
-          `https://${storeId}.public.blob.vercel-storage.com/${path}`,
-          { cache: "no-store" }
-        );
-        if (published.ok) return published.json();
-      }
-      const res = await fetch(
-        `https://blob.vercel-storage.com/?pathname=${encodeURIComponent(path)}`,
+      const metaRes = await fetch(
+        `https://blob.vercel-storage.com/?url=${encodeURIComponent(path)}`,
         { method: "GET", headers: blobHeaders(token), cache: "no-store" }
       );
-      if (!res.ok) return null;
-      const payload = await res.json().catch(() => null);
-      if (payload && payload.url) {
-        const file = await fetch(payload.url, { cache: "no-store" });
-        if (file.ok) return file.json();
+      if (metaRes.ok) {
+        const meta = await metaRes.json().catch(() => null);
+        const fromMeta = parseGroup(await readJsonUrl(meta && (meta.url || meta.downloadUrl)));
+        if (fromMeta) return fromMeta;
       }
-      return payload && payload.group ? payload : null;
+      if (storeId) {
+        const fromPublic = parseGroup(
+          await readJsonUrl(`https://${storeId}.public.blob.vercel-storage.com/${path}`)
+        );
+        if (fromPublic) return fromPublic;
+      }
+      const listed = await fetch(
+        `https://blob.vercel-storage.com/?prefix=${encodeURIComponent(path)}&limit=10`,
+        { method: "GET", headers: blobHeaders(token), cache: "no-store" }
+      );
+      if (listed.ok) {
+        const payload = await listed.json().catch(() => null);
+        const blobs = (payload && payload.blobs) || [];
+        const hit = blobs.find((b) => b && (b.pathname === path || String(b.pathname || "").startsWith(path.replace(/\.json$/, ""))));
+        const fromList = parseGroup(await readJsonUrl(hit && hit.url));
+        if (fromList) return fromList;
+      }
+      return null;
     },
     async set(key, data) {
       const path = blobPath(key);
@@ -209,17 +216,36 @@ function blobStore(token) {
           body: JSON.stringify(data),
         }
       );
+      const body = await res.text();
       if (!res.ok) {
-        const detail = await res.text();
-        throw new Error(`blob save failed (${res.status}): ${detail.slice(0, 300)}`);
+        throw new Error(`blob save failed (${res.status}): ${body.slice(0, 300)}`);
       }
+      let parsed = null;
+      try {
+        parsed = JSON.parse(body);
+      } catch {
+        parsed = null;
+      }
+      const written = parseGroup(await readJsonUrl(parsed && parsed.url)) || parseGroup(data);
+      if (!written) throw new Error("blob save returned no group");
+      return written;
     },
   };
 }
 
 function makeStore() {
   const token = blobToken();
-  return token ? blobStore(token) : memoryStore();
+  if (!token) {
+    return {
+      async get() {
+        return null;
+      },
+      async set() {
+        throw new Error("BLOB_READ_WRITE_TOKEN is not set");
+      },
+    };
+  }
+  return blobStore(token);
 }
 
 module.exports = async function handler(req, res) {
@@ -232,7 +258,7 @@ module.exports = async function handler(req, res) {
 
     const url = new URL(req.url, "http://localhost");
     if (url.searchParams.get("ping")) {
-      send(res, 200, { ok: true, store: STORE_NAME });
+      send(res, 200, { ok: true, store: STORE_NAME, blob: Boolean(blobToken()) });
       return;
     }
 
@@ -247,7 +273,7 @@ module.exports = async function handler(req, res) {
     if (req.method === "GET") {
       const data = parseGroup(await store.get(code));
       if (!data) {
-        fail(res, 404, "NOT_FOUND", { code, key: code });
+        fail(res, 404, "NOT_FOUND", { code, key: code, blob: Boolean(blobToken()) });
         return;
       }
       send(res, 200, data);
@@ -264,17 +290,16 @@ module.exports = async function handler(req, res) {
         const existing = parseGroup(await store.get(code));
         const merged = mergeSnapshots(existing, payload);
         await store.set(code, merged);
-        const check = parseGroup(await store.get(code));
-        if (!check) throw new Error("save completed but get returned empty");
         send(res, 200, {
           ok: true,
           stored: true,
           errorCode: null,
           store: STORE_NAME,
+          blob: Boolean(blobToken()),
           group: { id: merged.group.id, code, key: code },
         });
       } catch (err) {
-        fail(res, 500, "SAVE_FAILED", { message: String((err && err.message) || err) });
+        fail(res, 500, "SAVE_FAILED", { message: String((err && err.message) || err), blob: Boolean(blobToken()) });
       }
       return;
     }
