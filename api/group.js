@@ -156,7 +156,7 @@ function blobPath(key) {
   return `${PREFIX}${key}.json`;
 }
 
-const BLOB_API = "https://vercel.com/api/blob";
+const BLOB_APIS = ["https://blob.vercel-storage.com", "https://vercel.com/api/blob"];
 
 function blobHeaders(token) {
   const storeId = storeIdFromToken(token);
@@ -211,15 +211,17 @@ function blobStore(token) {
         /* fall through */
       }
       if (token) {
-        const metaRes = await fetch(`${BLOB_API}/?url=${encodeURIComponent(path)}`, {
-          method: "GET",
-          headers: blobHeaders(token),
-          cache: "no-store",
-        });
-        if (metaRes.ok) {
-          const meta = await metaRes.json().catch(() => null);
-          const fromMeta = parseGroup(await readJsonUrl(meta && (meta.url || meta.downloadUrl)));
-          if (fromMeta) return fromMeta;
+        for (const api of BLOB_APIS) {
+          const metaRes = await fetch(`${api}/?url=${encodeURIComponent(path)}`, {
+            method: "GET",
+            headers: blobHeaders(token),
+            cache: "no-store",
+          });
+          if (metaRes.ok) {
+            const meta = await metaRes.json().catch(() => null);
+            const fromMeta = parseGroup(await readJsonUrl(meta && (meta.url || meta.downloadUrl)));
+            if (fromMeta) return fromMeta;
+          }
         }
       }
       if (storeId) {
@@ -242,29 +244,37 @@ function blobStore(token) {
         sdkMessage = String((sdkErr && sdkErr.message) || sdkErr);
       }
       if (!token) throw new Error(sdkMessage || "blob token missing");
-      const res = await fetch(`${BLOB_API}/?pathname=${encodeURIComponent(path)}`, {
-        method: "PUT",
-        headers: Object.assign({}, blobHeaders(token), {
-          "x-vercel-blob-access": "public",
-          "x-add-random-suffix": "0",
-          "x-allow-overwrite": "1",
-          "x-content-type": "application/json",
-        }),
-        body: JSON.stringify(data),
-      });
-      const body = await res.text();
-      if (!res.ok) {
-        throw new Error(
-          `blob save failed (${res.status}): ${body.slice(0, 280)}${sdkMessage ? ` | sdk: ${sdkMessage.slice(0, 180)}` : ""}`
-        );
+      let lastBody = "";
+      let lastStatus = 0;
+      for (const api of BLOB_APIS) {
+        try {
+          const res = await fetch(`${api}/?pathname=${encodeURIComponent(path)}`, {
+            method: "PUT",
+            headers: Object.assign({}, blobHeaders(token), {
+              "x-vercel-blob-access": "public",
+              "x-add-random-suffix": "0",
+              "x-allow-overwrite": "1",
+              "x-content-type": "application/json",
+            }),
+            body: JSON.stringify(data),
+          });
+          lastStatus = res.status;
+          lastBody = await res.text();
+          if (!res.ok) continue;
+          let parsed = null;
+          try {
+            parsed = JSON.parse(lastBody);
+          } catch {
+            parsed = null;
+          }
+          return parseGroup(await readJsonUrl(parsed && parsed.url)) || parseGroup(data);
+        } catch (err) {
+          lastBody = String((err && err.message) || err);
+        }
       }
-      let parsed = null;
-      try {
-        parsed = JSON.parse(body);
-      } catch {
-        parsed = null;
-      }
-      return parseGroup(await readJsonUrl(parsed && parsed.url)) || parseGroup(data);
+      throw new Error(
+        `blob save failed (${lastStatus}): ${lastBody.slice(0, 280)}${sdkMessage ? ` | sdk: ${sdkMessage.slice(0, 180)}` : ""}`
+      );
     },
   };
 }
