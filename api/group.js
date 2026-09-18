@@ -134,12 +134,15 @@ function codeFromReq(req, payload) {
 }
 
 function blobToken() {
-  return (
+  let raw =
     process.env.BLOB_READ_WRITE_TOKEN ||
     process.env.NICOPOKE_BLOB_TOKEN ||
     process.env.VERCEL_BLOB_READ_WRITE_TOKEN ||
-    ""
-  );
+    "";
+  raw = String(raw).trim();
+  raw = raw.replace(/^BLOB_READ_WRITE_TOKEN\s*=\s*/i, "").trim();
+  raw = raw.replace(/^["']+|["']+$/g, "").trim();
+  return raw;
 }
 
 function storeIdCandidates(token) {
