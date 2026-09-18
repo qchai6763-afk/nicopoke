@@ -143,13 +143,20 @@ function blobToken() {
 }
 
 function storeIdFromToken(token) {
-  const match = String(token).match(/^vercel_blob_rw_([^_]+)_/);
-  return match ? match[1] : "";
+  const envId = String(process.env.BLOB_STORE_ID || "").replace(/^store_/, "");
+  if (envId) return envId;
+  const parts = String(token || "").split("_");
+  // vercel_blob_rw_<storeId>_<secret>
+  let id = parts[3] || "";
+  if (id === "store" && parts[4]) id = parts[4];
+  return id;
 }
 
 function blobPath(key) {
   return `${PREFIX}${key}.json`;
 }
+
+const BLOB_API = "https://vercel.com/api/blob";
 
 function blobHeaders(token) {
   const storeId = storeIdFromToken(token);
@@ -170,6 +177,7 @@ async function readJsonUrl(url) {
 
 async function sdkPut(path, data, token) {
   const { put } = await import("@vercel/blob");
+  const storeId = storeIdFromToken(token);
   const options = {
     access: "public",
     addRandomSuffix: false,
@@ -177,12 +185,16 @@ async function sdkPut(path, data, token) {
     contentType: "application/json",
   };
   if (token) options.token = token;
+  if (storeId) options.storeId = storeId;
   return put(path, JSON.stringify(data), options);
 }
 
 async function sdkHead(path, token) {
   const { head } = await import("@vercel/blob");
-  const options = token ? { token } : {};
+  const storeId = storeIdFromToken(token);
+  const options = {};
+  if (token) options.token = token;
+  if (storeId) options.storeId = storeId;
   return head(path, options);
 }
 
@@ -198,14 +210,17 @@ function blobStore(token) {
       } catch {
         /* fall through */
       }
-      const metaRes = await fetch(
-        `https://blob.vercel-storage.com/?url=${encodeURIComponent(path)}`,
-        { method: "GET", headers: blobHeaders(token), cache: "no-store" }
-      );
-      if (token && metaRes.ok) {
-        const meta = await metaRes.json().catch(() => null);
-        const fromMeta = parseGroup(await readJsonUrl(meta && (meta.url || meta.downloadUrl)));
-        if (fromMeta) return fromMeta;
+      if (token) {
+        const metaRes = await fetch(`${BLOB_API}/?url=${encodeURIComponent(path)}`, {
+          method: "GET",
+          headers: blobHeaders(token),
+          cache: "no-store",
+        });
+        if (metaRes.ok) {
+          const meta = await metaRes.json().catch(() => null);
+          const fromMeta = parseGroup(await readJsonUrl(meta && (meta.url || meta.downloadUrl)));
+          if (fromMeta) return fromMeta;
+        }
       }
       if (storeId) {
         const fromPublic = parseGroup(
@@ -217,32 +232,39 @@ function blobStore(token) {
     },
     async set(key, data) {
       const path = blobPath(key);
+      let sdkMessage = "";
       try {
         const saved = await sdkPut(path, data, token);
         const written = parseGroup(await readJsonUrl(saved && saved.url)) || parseGroup(data);
         if (!written) throw new Error("blob save returned no group");
         return written;
       } catch (sdkErr) {
-        if (!token) throw sdkErr;
-        const res = await fetch(
-          `https://blob.vercel-storage.com/?pathname=${encodeURIComponent(path)}`,
-          {
-            method: "PUT",
-            headers: Object.assign({}, blobHeaders(token), {
-              "x-vercel-blob-access": "public",
-              "x-add-random-suffix": "0",
-              "x-allow-overwrite": "1",
-              "x-content-type": "application/json",
-            }),
-            body: JSON.stringify(data),
-          }
-        );
-        const body = await res.text();
-        if (!res.ok) {
-          throw new Error(`blob save failed (${res.status}): ${body.slice(0, 300)}`);
-        }
-        return parseGroup(data);
+        sdkMessage = String((sdkErr && sdkErr.message) || sdkErr);
       }
+      if (!token) throw new Error(sdkMessage || "blob token missing");
+      const res = await fetch(`${BLOB_API}/?pathname=${encodeURIComponent(path)}`, {
+        method: "PUT",
+        headers: Object.assign({}, blobHeaders(token), {
+          "x-vercel-blob-access": "public",
+          "x-add-random-suffix": "0",
+          "x-allow-overwrite": "1",
+          "x-content-type": "application/json",
+        }),
+        body: JSON.stringify(data),
+      });
+      const body = await res.text();
+      if (!res.ok) {
+        throw new Error(
+          `blob save failed (${res.status}): ${body.slice(0, 280)}${sdkMessage ? ` | sdk: ${sdkMessage.slice(0, 180)}` : ""}`
+        );
+      }
+      let parsed = null;
+      try {
+        parsed = JSON.parse(body);
+      } catch {
+        parsed = null;
+      }
+      return parseGroup(await readJsonUrl(parsed && parsed.url)) || parseGroup(data);
     },
   };
 }
@@ -266,6 +288,7 @@ module.exports = async function handler(req, res) {
         store: STORE_NAME,
         blob: Boolean(blobToken()),
         oidc: Boolean(process.env.VERCEL_OIDC_TOKEN),
+        storeId: Boolean(storeIdFromToken(blobToken())),
       });
       return;
     }
