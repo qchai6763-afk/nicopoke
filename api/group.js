@@ -158,8 +158,7 @@ function blobPath(key) {
 
 const BLOB_APIS = ["https://blob.vercel-storage.com", "https://vercel.com/api/blob"];
 
-function blobHeaders(token) {
-  const storeId = storeIdFromToken(token);
+function blobHeaders(token, storeId) {
   const headers = {
     Authorization: `Bearer ${token}`,
     "x-api-version": "12",
@@ -170,32 +169,37 @@ function blobHeaders(token) {
 
 async function readJsonUrl(url) {
   if (!url) return null;
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) return null;
-  return res.json().catch(() => null);
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) return null;
+    return res.json().catch(() => null);
+  } catch {
+    return null;
+  }
 }
 
-async function sdkPut(path, data, token) {
-  const { put } = await import("@vercel/blob");
-  const storeId = storeIdFromToken(token);
-  const options = {
-    access: "public",
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: "application/json",
-  };
-  if (token) options.token = token;
-  if (storeId) options.storeId = storeId;
-  return put(path, JSON.stringify(data), options);
-}
-
-async function sdkHead(path, token) {
-  const { head } = await import("@vercel/blob");
-  const storeId = storeIdFromToken(token);
-  const options = {};
-  if (token) options.token = token;
-  if (storeId) options.storeId = storeId;
-  return head(path, options);
+async function blobRequest(api, query, token, storeId, method, body) {
+  const res = await fetch(`${api}/?${query}`, {
+    method,
+    headers: Object.assign({}, blobHeaders(token, storeId), body
+      ? {
+          "x-vercel-blob-access": "public",
+          "x-add-random-suffix": "0",
+          "x-allow-overwrite": "1",
+          "x-content-type": "application/json",
+        }
+      : {}),
+    body,
+    cache: "no-store",
+  });
+  const text = await res.text();
+  let json = null;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = null;
+  }
+  return { ok: res.ok, status: res.status, text, json };
 }
 
 function blobStore(token) {
@@ -203,24 +207,22 @@ function blobStore(token) {
   return {
     async get(key) {
       const path = blobPath(key);
-      try {
-        const meta = await sdkHead(path, token);
-        const fromSdk = parseGroup(await readJsonUrl(meta && meta.url));
-        if (fromSdk) return fromSdk;
-      } catch {
-        /* fall through */
-      }
       if (token) {
         for (const api of BLOB_APIS) {
-          const metaRes = await fetch(`${api}/?url=${encodeURIComponent(path)}`, {
-            method: "GET",
-            headers: blobHeaders(token),
-            cache: "no-store",
-          });
-          if (metaRes.ok) {
-            const meta = await metaRes.json().catch(() => null);
-            const fromMeta = parseGroup(await readJsonUrl(meta && (meta.url || meta.downloadUrl)));
-            if (fromMeta) return fromMeta;
+          try {
+            const meta = await blobRequest(
+              api,
+              `url=${encodeURIComponent(path)}`,
+              token,
+              storeId,
+              "GET"
+            );
+            if (meta.ok && meta.json) {
+              const fromMeta = parseGroup(await readJsonUrl(meta.json.url || meta.json.downloadUrl));
+              if (fromMeta) return fromMeta;
+            }
+          } catch {
+            /* try next */
           }
         }
       }
@@ -234,47 +236,29 @@ function blobStore(token) {
     },
     async set(key, data) {
       const path = blobPath(key);
-      let sdkMessage = "";
-      try {
-        const saved = await sdkPut(path, data, token);
-        const written = parseGroup(await readJsonUrl(saved && saved.url)) || parseGroup(data);
-        if (!written) throw new Error("blob save returned no group");
-        return written;
-      } catch (sdkErr) {
-        sdkMessage = String((sdkErr && sdkErr.message) || sdkErr);
-      }
-      if (!token) throw new Error(sdkMessage || "blob token missing");
-      let lastBody = "";
-      let lastStatus = 0;
+      if (!token) throw new Error("blob token missing");
+      const payload = JSON.stringify(data);
+      let last = "no attempt";
       for (const api of BLOB_APIS) {
         try {
-          const res = await fetch(`${api}/?pathname=${encodeURIComponent(path)}`, {
-            method: "PUT",
-            headers: Object.assign({}, blobHeaders(token), {
-              "x-vercel-blob-access": "public",
-              "x-add-random-suffix": "0",
-              "x-allow-overwrite": "1",
-              "x-content-type": "application/json",
-            }),
-            body: JSON.stringify(data),
-          });
-          lastStatus = res.status;
-          lastBody = await res.text();
+          const res = await blobRequest(
+            api,
+            `pathname=${encodeURIComponent(path)}`,
+            token,
+            storeId,
+            "PUT",
+            payload
+          );
+          last = `${api} ${res.status} ${res.text.slice(0, 180)}`;
           if (!res.ok) continue;
-          let parsed = null;
-          try {
-            parsed = JSON.parse(lastBody);
-          } catch {
-            parsed = null;
-          }
-          return parseGroup(await readJsonUrl(parsed && parsed.url)) || parseGroup(data);
+          const written =
+            parseGroup(await readJsonUrl(res.json && res.json.url)) || parseGroup(data);
+          if (written) return written;
         } catch (err) {
-          lastBody = String((err && err.message) || err);
+          last = `${api} ${String((err && err.message) || err)}`;
         }
       }
-      throw new Error(
-        `blob save failed (${lastStatus}): ${lastBody.slice(0, 280)}${sdkMessage ? ` | sdk: ${sdkMessage.slice(0, 180)}` : ""}`
-      );
+      throw new Error(`blob save failed: ${last}`);
     },
   };
 }
