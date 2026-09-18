@@ -142,14 +142,30 @@ function blobToken() {
   );
 }
 
+function storeIdCandidates(token) {
+  const ids = [];
+  const envId = String(process.env.BLOB_STORE_ID || "").trim();
+  if (envId) {
+    ids.push(envId.replace(/^store_/, ""));
+    if (envId.startsWith("store_")) ids.push(envId);
+    else ids.push(`store_${envId}`);
+  }
+  const raw = String(token || "");
+  const parts = raw.split("_");
+  if (parts[3]) ids.push(parts[3]);
+  if (parts[3] === "store" && parts[4]) ids.push(parts[4]);
+  const after = raw.replace(/^vercel_blob_rw_/, "");
+  const first = after.split("_")[0];
+  if (first) ids.push(first);
+  const unique = [];
+  ids.forEach((id) => {
+    if (id && !unique.includes(id)) unique.push(id);
+  });
+  return unique;
+}
+
 function storeIdFromToken(token) {
-  const envId = String(process.env.BLOB_STORE_ID || "").replace(/^store_/, "");
-  if (envId) return envId;
-  const parts = String(token || "").split("_");
-  // vercel_blob_rw_<storeId>_<secret>
-  let id = parts[3] || "";
-  if (id === "store" && parts[4]) id = parts[4];
-  return id;
+  return storeIdCandidates(token)[0] || "";
 }
 
 function blobPath(key) {
@@ -239,23 +255,27 @@ function blobStore(token) {
       if (!token) throw new Error("blob token missing");
       const payload = JSON.stringify(data);
       let last = "no attempt";
+      const ids = storeIdCandidates(token);
+      if (!ids.length) ids.push("");
       for (const api of BLOB_APIS) {
-        try {
-          const res = await blobRequest(
-            api,
-            `pathname=${encodeURIComponent(path)}`,
-            token,
-            storeId,
-            "PUT",
-            payload
-          );
-          last = `${api} ${res.status} ${res.text.slice(0, 180)}`;
-          if (!res.ok) continue;
-          const written =
-            parseGroup(await readJsonUrl(res.json && res.json.url)) || parseGroup(data);
-          if (written) return written;
-        } catch (err) {
-          last = `${api} ${String((err && err.message) || err)}`;
+        for (const id of ids) {
+          try {
+            const res = await blobRequest(
+              api,
+              `pathname=${encodeURIComponent(path)}`,
+              token,
+              id,
+              "PUT",
+              payload
+            );
+            last = `${api} id=${id ? "yes" : "no"} ${res.status} ${res.text.slice(0, 160)}`;
+            if (!res.ok) continue;
+            const written =
+              parseGroup(await readJsonUrl(res.json && res.json.url)) || parseGroup(data);
+            if (written) return written;
+          } catch (err) {
+            last = `${api} ${String((err && err.message) || err)}`;
+          }
         }
       }
       throw new Error(`blob save failed: ${last}`);
@@ -283,6 +303,14 @@ module.exports = async function handler(req, res) {
         blob: Boolean(blobToken()),
         oidc: Boolean(process.env.VERCEL_OIDC_TOKEN),
         storeId: Boolean(storeIdFromToken(blobToken())),
+        blobKeys: Object.keys(process.env).filter((k) => /BLOB/i.test(k)),
+        tokenKind: blobToken().startsWith("vercel_blob_rw_")
+          ? "rw"
+          : blobToken().startsWith("eyJ")
+            ? "jwt"
+            : blobToken()
+              ? "other"
+              : "none",
       });
       return;
     }
