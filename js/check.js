@@ -83,10 +83,11 @@ function keypadHtml(name) {
     .join("")}</div>`;
 }
 
-function shapeTiles(cells, highlight) {
-  return `<div class="shape-grid" aria-hidden="true">${[0, 1, 2, 3, 4, 5, 6, 7, 8]
-    .map((i) => `<span class="${cells.includes(i) ? "on" : ""} ${highlight === i ? "hi" : ""}"></span>`)
-    .join("")}</div>`;
+function shapeTiles(cells, highlight, size = 3) {
+  const n = size * size;
+  return `<div class="shape-grid size-${size}" aria-hidden="true">${Array.from({ length: n }, (_, i) =>
+    `<span class="${cells.includes(i) ? "on" : ""} ${highlight === i ? "hi" : ""}"></span>`
+  ).join("")}</div>`;
 }
 
 function pickAnimalSet() {
