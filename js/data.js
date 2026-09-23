@@ -313,7 +313,7 @@ const BRAIN_GAMES = [
     domain: "social",
     title: "きもち読み",
     skill: "社会的認知",
-    blurb: "顔を見て気持ちを選びます。難しいは擬音語で読みます。",
+    blurb: "顔を見て、今の気持ちを選びます。",
   },
   {
     id: "nazo",
@@ -655,27 +655,4 @@ const MOODS = [
   { id: "worry", label: "困っている", photos: ["img/mood-worry.png"] },
   { id: "calm", label: "安心している", photos: ["img/mood-calm.png"] },
   { id: "anxiety", label: "不安・心配", photos: ["img/mood-sad-2.png"] },
-];
-
-const MOOD_ONOMATOPEIA = [
-  { word: "あたふた", mood: "worry" },
-  { word: "あんぐり", mood: "wow" },
-  { word: "あっぷあっぷ", mood: "anxiety" },
-  { word: "いそいそ", mood: "fun" },
-  { word: "いらいら", mood: "angry" },
-  { word: "うきうき", mood: "happy" },
-  { word: "うじうじ", mood: "anxiety" },
-  { word: "うだうだ", mood: "sad" },
-  { word: "うはうは", mood: "fun" },
-  { word: "うるうる", mood: "sad" },
-  { word: "うろうろ", mood: "worry" },
-  { word: "うんざり", mood: "angry" },
-  { word: "えんえん", mood: "sad" },
-  { word: "おたおた", mood: "worry" },
-  { word: "おどおど", mood: "anxiety" },
-  { word: "がーん", mood: "wow" },
-  { word: "がくっ", mood: "sad" },
-  { word: "がさがさ", mood: "angry" },
-  { word: "がくがく", mood: "anxiety" },
-  { word: "かたかた", mood: "worry" },
 ];

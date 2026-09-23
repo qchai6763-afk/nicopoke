@@ -67,7 +67,7 @@ function formatPlaySeconds(ms) {
 }
 
 const DIFF_KEY = "nicopoke-diff-v1";
-const DIFF_KINDS = ["quiz", "order", "space", "mood"];
+const DIFF_KINDS = ["quiz", "order", "space"];
 const DIFF_SPECS = {
   space: {
     easy: { total: 5, size: 3, fill: 4, noClock: true, limitMs: 0, perRound: false },
@@ -80,9 +80,9 @@ const DIFF_SPECS = {
     hard: { max: 10, total: 3, noClock: false, limitMs: 15000 },
   },
   mood: {
-    easy: { onomato: false, noClock: true },
-    normal: { onomato: false, noClock: true },
-    hard: { onomato: true, noClock: true },
+    easy: { noClock: true },
+    normal: { noClock: true },
+    hard: { noClock: true },
   },
   quiz: {
     easy: { noClock: true },
@@ -100,11 +100,6 @@ const DIFF_HELP = {
     easy: "1から5までを3回。時間制限はありません。",
     normal: "1から15までを3回。じっくりマイペースに。",
     hard: "1から10までを3回通し。全部で15秒です。",
-  },
-  mood: {
-    easy: "8つの気持ちから選びます。",
-    normal: "8つの気持ちから選びます。",
-    hard: "擬音語・擬態語20語から、心の動きを読みます。",
   },
   quiz: {
     easy: "スマホ・エアコン・コンビニなど、身近な略語です。",
@@ -597,11 +592,11 @@ const BRAIN_INTRO = {
     title: "きもち読み",
     img: "img/brain-intro-mood.png",
     alt: "顔を見て気持ちのマークを選んでいるイラスト",
-    lead: "顔を見て、いまの気持ちに近いものを押します。難易度を選べます。",
+    lead: "顔を見て、いまの気持ちに近いものを押します。",
     steps: [
       "大きな顔を、ゆっくり見てください。",
-      "簡単・普通は、8つの気持ちから選びます。",
-      "押した瞬間に正解・はずれと答えが出て、次の問題へ進みます。難しいは擬音語・擬態語20語からです。",
+      "8つの気持ちから、いちばん近いものを押します。",
+      "押した瞬間に正解・はずれと答えが出て、次の問題へ進みます。",
     ],
   },
   nazo: {
@@ -1340,17 +1335,10 @@ function stopMoodReveal() {
 
 function ensureMood() {
   if (!window.__mood) {
-    const spec = brainDiffSpec("mood");
     const pool = MOODS.flatMap((m) =>
       (m.photos || [m.photo]).map((photo) => ({ id: m.id, label: m.label, photo }))
     );
-    const qs = shuffleList(pool).slice(0, 6).map((q) => {
-      if (!spec.onomato) return q;
-      const words = MOOD_ONOMATOPEIA.filter((w) => w.mood === q.id);
-      const pick = words.length ? shuffleList(words)[0] : MOOD_ONOMATOPEIA[0];
-      return { ...q, answerWord: pick.word };
-    });
-    window.__mood = { i: 0, qs, score: 0, onomato: spec.onomato, lock: false, reveal: null };
+    window.__mood = { i: 0, qs: shuffleList(pool).slice(0, 6), score: 0, lock: false, reveal: null };
   }
   return window.__mood;
 }
@@ -1360,11 +1348,6 @@ function renderMood() {
   if (game.i >= game.qs.length) return goPlayResult("mood");
   startPlayClock("mood", { noClock: true });
   const q = game.qs[game.i];
-  const answerKey = game.onomato ? q.answerWord : q.id;
-  const answerLabel = game.onomato ? q.answerWord : q.label;
-  const options = game.onomato
-    ? MOOD_ONOMATOPEIA.map((w) => ({ key: w.word, label: w.word }))
-    : MOODS.map((m) => ({ key: m.id, label: m.label }));
   const reveal = game.reveal;
   app.innerHTML = chrome(
     `
@@ -1374,22 +1357,20 @@ function renderMood() {
       ${
         reveal
           ? `<p class="mood-judge ${reveal.ok ? "ok" : "ng"}">${reveal.ok ? "正解！" : "はずれ"}</p>
-             <p class="mood-answer">答えは「${escapeHtml(answerLabel)}」です</p>`
+             <p class="mood-answer">答えは「${escapeHtml(q.label)}」です</p>`
           : `<h1 class="theme">この人は、どんな気持ち？</h1>`
       }
       <div class="mood-hero">${moodVisual(q.id, q.photo)}</div>
-      <div class="palette ${game.onomato ? "dense" : ""}">${options
-        .map((m) => {
-          let cls = `pal ${game.onomato ? "" : "wide"}`;
-          if (reveal) {
-            if (m.key === answerKey) cls += " yes";
-            if (m.key === reveal.picked && !reveal.ok) cls += " no";
-          }
-          return `<button type="button" class="${cls}" data-mood="${escapeHtml(m.key)}" ${
-            reveal ? "disabled" : ""
-          }>${escapeHtml(m.label)}</button>`;
-        })
-        .join("")}</div>
+      <div class="palette">${MOODS.map((m) => {
+        let cls = "pal wide";
+        if (reveal) {
+          if (m.id === q.id) cls += " yes";
+          if (m.id === reveal.picked && !reveal.ok) cls += " no";
+        }
+        return `<button type="button" class="${cls}" data-mood="${m.id}" ${
+          reveal ? "disabled" : ""
+        }>${escapeHtml(m.label)}</button>`;
+      }).join("")}</div>
     `,
     "brain"
   );
@@ -1398,7 +1379,7 @@ function renderMood() {
     btn.addEventListener("click", () => {
       if (game.lock || game.reveal) return;
       const picked = btn.dataset.mood;
-      const ok = picked === answerKey;
+      const ok = picked === q.id;
       if (ok) game.score += 1;
       game.lock = true;
       game.reveal = { ok, picked };
