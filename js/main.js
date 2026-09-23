@@ -17,9 +17,6 @@ function go(path) {
   location.hash = path;
 }
 
-window.addEventListener("hashchange", render);
-window.addEventListener("hidamari-change", render);
-
 function escapeHtml(str = "") {
   return String(str)
     .replaceAll("&", "&amp;")
@@ -824,9 +821,124 @@ function render() {
   return renderToday();
 }
 
-render();
+const TUTORIAL_KEY = "nicopoke-tutorial-v1";
+
+function tutorialSeen() {
+  try {
+    return localStorage.getItem(namespacedKey(TUTORIAL_KEY)) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markTutorialSeen() {
+  try {
+    localStorage.setItem(namespacedKey(TUTORIAL_KEY), "1");
+  } catch {
+    /* ignore */
+  }
+}
+
+function tutorialSlides() {
+  return [
+    {
+      img: "img/learn-aging.png",
+      alt: "にこぽけのやさしい脳のイラスト",
+      title: "にこぽけへようこそ",
+      text: "家族の写真と、かんたんな脳トレで、毎日をすこし明るくするアプリです。",
+    },
+    {
+      img: "img/brain-intro-memory.png",
+      alt: "家族の写真カードのイラスト",
+      title: "今日の一枚を送る",
+      text: "下の「今日」から写真を送ります。家族の投稿は「家族」で見られます。",
+    },
+    {
+      img: "img/brain-intro-order.png",
+      alt: "数字タッチで遊んでいるイラスト",
+      title: "息抜きの脳トレ",
+      text: "「息抜き」には数字タッチやかたち合わせがあります。難易度は簡単・普通・難しいから選べます。",
+    },
+    {
+      img: "img/learn-train.png",
+      alt: "脳トレと会話で頭がつながるイラスト",
+      title: "読みものもあります",
+      text: "認知症の仕組み・予防・前触れを、イラストつきで読めます。準備ができたら「はじめる」を押してください。",
+    },
+  ];
+}
+
+function closeTutorial() {
+  markTutorialSeen();
+  document.getElementById("tutorial")?.remove();
+}
+
+function paintTutorial() {
+  if (tutorialSeen()) {
+    document.getElementById("tutorial")?.remove();
+    return;
+  }
+  const slides = tutorialSlides();
+  if (window.__tutPage == null) window.__tutPage = 0;
+  window.__tutPage = Math.max(0, Math.min(slides.length - 1, window.__tutPage));
+  const i = window.__tutPage;
+  const s = slides[i];
+  const last = i === slides.length - 1;
+  let root = document.getElementById("tutorial");
+  if (!root) {
+    root = document.createElement("div");
+    root.id = "tutorial";
+    root.className = "tut-overlay";
+    document.body.appendChild(root);
+  }
+  root.innerHTML = `
+    <div class="tut-card" role="dialog" aria-modal="true" aria-labelledby="tut-title">
+      <p class="tut-kicker">つかいかた ${i + 1} / ${slides.length}</p>
+      <img class="tut-img" src="${s.img}" alt="${s.alt}" />
+      <h2 id="tut-title">${s.title}</h2>
+      <p>${s.text}</p>
+      <div class="tut-dots">${slides
+        .map((_, n) => `<span class="${n === i ? "on" : ""}"></span>`)
+        .join("")}</div>
+      <div class="tut-actions">
+        ${i > 0 ? `<button type="button" class="ghost" data-tut-prev>まえへ</button>` : ""}
+        ${
+          last
+            ? `<button type="button" class="primary" data-tut-start>はじめる</button>`
+            : `<button type="button" class="primary" data-tut-next>つぎへ</button>`
+        }
+      </div>
+    </div>
+  `;
+  root.querySelector("[data-tut-next]")?.addEventListener("click", () => {
+    window.__tutPage += 1;
+    paintTutorial();
+  });
+  root.querySelector("[data-tut-prev]")?.addEventListener("click", () => {
+    window.__tutPage -= 1;
+    paintTutorial();
+  });
+  root.querySelector("[data-tut-start]")?.addEventListener("click", () => closeTutorial());
+}
+
+function boot() {
+  render();
+  paintTutorial();
+}
+
+window.addEventListener("hashchange", () => {
+  render();
+  paintTutorial();
+});
+window.addEventListener("hidamari-change", () => {
+  render();
+  paintTutorial();
+});
+
+boot();
 refreshFromCloud().then((changed) => {
   if (changed) render();
+  paintTutorial();
 });
 window.setInterval(() => {
   if (route() === "brain") return;
