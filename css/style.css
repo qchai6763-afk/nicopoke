@@ -20,6 +20,8 @@ html,
 body {
   margin: 0;
   min-height: 100%;
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
   background:
     radial-gradient(900px 420px at 10% -10%, #ffe3ef, transparent),
     radial-gradient(700px 380px at 110% 0%, #d9fff0, transparent),
@@ -28,6 +30,14 @@ body {
   font-family: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", sans-serif;
   font-size: 18px;
   line-height: 1.5;
+}
+
+button,
+a,
+label,
+input,
+select {
+  touch-action: manipulation;
 }
 
 button,
