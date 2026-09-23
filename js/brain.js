@@ -67,22 +67,22 @@ function formatPlaySeconds(ms) {
 }
 
 const DIFF_KEY = "nicopoke-diff-v1";
-const DIFF_KINDS = ["quiz", "order", "space", "mood"];
+const DIFF_KINDS = ["quiz", "order", "space"];
 const DIFF_SPECS = {
   space: {
     easy: { total: 5, size: 3, fill: 4, noClock: true, limitMs: 0, perRound: false },
-    normal: { total: 10, size: 3, fill: 4, noClock: true, limitMs: 0, perRound: false },
-    hard: { total: 15, size: 4, fill: 6, noClock: false, limitMs: 20000, perRound: true },
+    normal: { total: 10, size: 3, fill: 4, noClock: false, limitMs: 5000, perRound: true },
+    hard: { total: 15, size: 4, fill: 6, noClock: false, limitMs: 30000, perRound: false },
   },
   order: {
-    easy: { max: 5, noClock: true, limitMs: 0 },
-    normal: { max: 15, noClock: true, limitMs: 0 },
-    hard: { max: 10, noClock: false, limitMs: 15000 },
+    easy: { max: 5, total: 3, noClock: true, limitMs: 0 },
+    normal: { max: 15, total: 3, noClock: true, limitMs: 0 },
+    hard: { max: 10, total: 3, noClock: false, limitMs: 15000 },
   },
   mood: {
-    easy: { onomato: false, noClock: true },
-    normal: { onomato: false, noClock: true },
-    hard: { onomato: true, noClock: true },
+    easy: { noClock: true },
+    normal: { noClock: true },
+    hard: { noClock: true },
   },
   quiz: {
     easy: { noClock: true },
@@ -93,18 +93,13 @@ const DIFF_SPECS = {
 const DIFF_HELP = {
   space: {
     easy: "見本は5回、3×3マス。時間制限はありません。",
-    normal: "見本は10回、3×3マス。時間制限はありません。",
-    hard: "見本は15回、4×4マス。1問20秒です。",
+    normal: "見本は10回、3×3マス。1問5秒です。見本と同じになったら次へ進みます。",
+    hard: "見本は15回、4×4マス。全問通しで30秒です。見本と同じになったら次へ進みます。",
   },
   order: {
-    easy: "1から5まで。時間制限はありません。",
-    normal: "1から15まで。じっくりマイペースに。",
-    hard: "1から10まで。15秒の制限時間があります。",
-  },
-  mood: {
-    easy: "8つの気持ちから選びます。",
-    normal: "8つの気持ちから選びます。",
-    hard: "擬音語・擬態語20語から、心の動きを読みます。",
+    easy: "1から5までを3回。時間制限はありません。",
+    normal: "1から15までを3回。じっくりマイペースに。",
+    hard: "1から10までを3回通し。全部で15秒です。",
   },
   quiz: {
     easy: "スマホ・エアコン・コンビニなど、身近な略語です。",
@@ -302,7 +297,10 @@ function freshBrainGame(kind) {
   if (kind === "quiz") startQuiz();
   if (kind === "order") window.__order = null;
   if (kind === "space") window.__space = null;
-  if (kind === "mood") window.__mood = null;
+  if (kind === "mood") {
+    stopMoodReveal();
+    window.__mood = null;
+  }
   if (kind === "nazo") startNazo();
 }
 
@@ -345,9 +343,7 @@ function playResultNote(kind) {
     return `${timeout}${window.__mood.score} / ${window.__mood.qs.length} 問 正解`;
   }
   if (kind === "order" && window.__order) {
-    return timeout
-      ? `${timeout}つぎは ${window.__order.next} でした`
-      : `1から ${window.__order.max} まで押せました`;
+    return `${timeout}${window.__order.ok} / ${window.__order.total} 回 できた`;
   }
   if (kind === "space" && window.__space) {
     return `${timeout}${window.__space.ok} / ${window.__space.total} 問 できた`;
@@ -577,8 +573,8 @@ const BRAIN_INTRO = {
     lead: "バラバラの数字を、1から順にポチポチ押します。難易度を選べます。",
     steps: [
       "簡単・普通・難しいから選びます。数字の個数と制限時間が変わります。",
-      "いちばん小さい数字から探します。まちがえたら、また1からやりなおします。",
-      "最後の数字まで押せたら終わりです。",
+      "いちばん小さい数字から探します。まちがえたら、その回は1からやりなおします。",
+      "1セット押せたら次の配置です。全部で3回できたら終わりです。難しいは3回通しで15秒です。",
     ],
   },
   space: {
@@ -588,19 +584,19 @@ const BRAIN_INTRO = {
     lead: "見本と同じマスを、同じ位置で押します。難易度を選べます。",
     steps: [
       "簡単・普通・難しいで、回数とマスの大きさが変わります。",
-      "上の見本を見て、下の空のマスを押して同じ形をつくります。",
-      "できたら「できた」を押します。難しいは1問20秒です。",
+      "右上の小さな見本を見て、下の空のマスを押して同じ形をつくります。",
+      "見本と同じになった瞬間に次へ進みます。普通は1問5秒、難しいは全問通しで30秒です。",
     ],
   },
   mood: {
     title: "きもち読み",
     img: "img/brain-intro-mood.png",
     alt: "顔を見て気持ちのマークを選んでいるイラスト",
-    lead: "顔を見て、いまの気持ちに近いものを押します。難易度を選べます。",
+    lead: "顔を見て、いまの気持ちに近いものを押します。",
     steps: [
       "大きな顔を、ゆっくり見てください。",
-      "簡単・普通は、8つの気持ちから選びます。",
-      "難しいは、擬音語・擬態語20語から、細かい心の動きを読みます。",
+      "8つの気持ちから、いちばん近いものを押します。",
+      "押した瞬間に正解・はずれと答えが出て、次の問題へ進みます。",
     ],
   },
   nazo: {
@@ -1087,15 +1083,38 @@ function ensureOrder() {
     const spec = brainDiffSpec("order");
     const max = spec.max;
     window.__order = {
+      round: 0,
+      total: spec.total || 3,
+      ok: 0,
       next: 1,
       max,
       won: false,
       layout: shuffleList(orderNums(max)),
       noClock: spec.noClock,
       limitMs: spec.limitMs,
+      failed: false,
     };
   }
   return window.__order;
+}
+
+function resetOrderBoard(game) {
+  game.next = 1;
+  game.layout = shuffleList(orderNums(game.max));
+}
+
+function finishOrderRound(ok) {
+  const game = window.__order;
+  if (!game || game.won || game.failed) return;
+  if (ok) game.ok += 1;
+  game.round += 1;
+  if (game.round >= game.total) {
+    game.won = true;
+    goPlayResult("order");
+    return;
+  }
+  resetOrderBoard(game);
+  renderOrder();
 }
 
 function renderOrder() {
@@ -1104,17 +1123,21 @@ function renderOrder() {
   startPlayClock("order", {
     noClock: game.noClock,
     limitMs: game.limitMs,
-    onExpire: () => goPlayResult("order"),
+    onExpire: () => {
+      if (game.won || game.failed) return;
+      game.failed = true;
+      goPlayResult("order");
+    },
   });
   app.innerHTML = chrome(
     `
       <a class="back-link" href="#/brain">← 脳トレ一覧</a>
-      <p class="kicker">数字タッチ</p>
+      <p class="kicker">数字タッチ　${game.round + 1} / ${game.total} 回</p>
       ${playClockHtml()}
       <h1 class="theme">${game.won ? "全部押せました！" : `つぎは ${game.next}`}</h1>
-      <p class="help">1から ${game.max} まで、小さい順に押してください。まちがえたら 1 からやり直しです。${
-        game.limitMs ? `制限時間は ${game.limitMs / 1000} 秒です。` : "時間制限はありません。"
-      }</p>
+      <p class="help">1から ${game.max} まで、小さい順に押してください。まちがえたら 1 からやり直しです。全部で ${
+        game.total
+      } 回です。${game.limitMs ? `3回通しで ${game.limitMs / 1000} 秒です。` : "時間制限はありません。"}</p>
       <div class="num-scatter n-${game.max}">${game.layout
         .map((n) => {
           const done = n < game.next || game.won;
@@ -1123,14 +1146,14 @@ function renderOrder() {
           }>${n}</button>`;
         })
         .join("")}</div>
-      <button class="ghost" type="button" data-order-new>もう一度</button>
+      <button class="ghost" type="button" data-order-new>はじめから</button>
     `,
     "brain"
   );
   bindTop();
   app.querySelectorAll("[data-num]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      if (game.won) return;
+      if (game.won || game.failed) return;
       const n = Number(btn.dataset.num);
       if (n !== game.next) {
         game.next = 1;
@@ -1138,7 +1161,10 @@ function renderOrder() {
         return;
       }
       game.next += 1;
-      if (game.next > game.max) game.won = true;
+      if (game.next > game.max) {
+        finishOrderRound(true);
+        return;
+      }
       renderOrder();
     });
   });
@@ -1150,6 +1176,20 @@ function renderOrder() {
 function randomPattern(size = 3, fill = 4) {
   const cells = shuffleList(Array.from({ length: size * size }, (_, i) => i)).slice(0, fill);
   return cells.sort((a, b) => a - b);
+}
+
+function spacePickKey(list) {
+  return (list || []).slice().sort((x, y) => x - y).join(",");
+}
+
+function spaceMatches(game) {
+  return spacePickKey(game.pick) === spacePickKey(game.target);
+}
+
+function spaceTimeHelp(game) {
+  if (game.perRound && game.limitMs) return `1問 ${game.limitMs / 1000} 秒です。見本と同じになったら次へ進みます。`;
+  if (game.limitMs) return `全問通しで ${game.limitMs / 1000} 秒です。見本と同じになったら次へ進みます。`;
+  return "時間制限はありません。見本と同じになったら次へ進みます。";
 }
 
 function ensureSpace() {
@@ -1166,98 +1206,139 @@ function ensureSpace() {
       noClock: spec.noClock,
       limitMs: spec.limitMs,
       perRound: spec.perRound,
+      failed: false,
+      lock: false,
     };
   }
   return window.__space;
 }
 
-function expireSpaceRound() {
+function resetSpaceRoundClock() {
   const game = window.__space;
   const run = window.__playRun;
-  if (!game) return;
+  if (!game || !game.perRound || !run || !game.limitMs) return;
+  run.timedOut = false;
+  run.limitMs = game.limitMs;
+  run.endsAt = Date.now() + game.limitMs;
+}
+
+function advanceSpace(ok) {
+  const game = window.__space;
+  const run = window.__playRun;
+  if (!game || game.failed) return;
+  if (ok) game.ok += 1;
   game.round += 1;
-  game.target = randomPattern(game.size, game.fill);
   game.pick = [];
-  if (game.round >= game.total) {
-    if (run) run.timedOut = true;
-    goPlayResult("space");
-    return;
-  }
-  if (run) {
-    run.timedOut = false;
-    run.limitMs = game.limitMs;
-    run.endsAt = Date.now() + game.limitMs;
-  }
+  game.target = randomPattern(game.size, game.fill);
+  game.lock = false;
+  if (run) run.timedOut = false;
+  if (game.round >= game.total) return goPlayResult("space");
+  resetSpaceRoundClock();
   renderSpace();
 }
 
-function renderSpace() {
+function expireSpaceRound() {
+  const game = window.__space;
+  if (!game || game.failed) return;
+  advanceSpace(false);
+}
+
+function renderSpaceFail() {
+  stopPlayClock();
   const game = ensureSpace();
-  if (game.round >= game.total) return goPlayResult("space");
-  const cells = game.size * game.size;
-  startPlayClock("space", {
-    noClock: game.noClock,
-    limitMs: game.perRound ? game.limitMs : 0,
-    onExpire: game.perRound ? expireSpaceRound : null,
-  });
   app.innerHTML = chrome(
     `
       <a class="back-link" href="#/brain">← 脳トレ一覧</a>
       <p class="kicker">かたち合わせ</p>
-      ${playClockHtml()}
-      <h1 class="theme">見本 ${game.round + 1} / ${game.total}</h1>
-      <p class="help">上の見本と同じマスを、下で押してください。もう一度押すと消えます。${
-        game.perRound ? `1問 ${game.limitMs / 1000} 秒です。` : "時間制限はありません。"
-      }</p>
-      <p class="check-lab">見本</p>
-      ${shapeTiles(game.target, undefined, game.size)}
-      <p class="check-lab">あなたの答え</p>
-      <div class="shape-grid play size-${game.size}">${Array.from({ length: cells }, (_, i) =>
-        `<button type="button" class="${game.pick.includes(i) ? "on" : ""}" data-cell="${i}"></button>`
-      ).join("")}</div>
-      <button class="primary" type="button" data-space-ok>できた</button>
+      <h1 class="theme">時間切れ</h1>
+      <div class="play-result">
+        <p class="play-rank"><span>⏰</span>失敗</p>
+        <p class="help">全問通しで ${game.limitMs / 1000} 秒に間に合いませんでした。見本 ${game.round} / ${
+          game.total
+        } まで進みました。</p>
+        <button class="primary" type="button" data-space-retry>はじめから</button>
+        <a class="ghost" href="#/brain">やめる</a>
+      </div>
+    `,
+    "brain"
+  );
+  bindTop();
+  app.querySelector("[data-space-retry]")?.addEventListener("click", () => {
+    restartBrainGame("space");
+  });
+}
+
+function renderSpace() {
+  const game = ensureSpace();
+  if (game.failed) return renderSpaceFail();
+  if (game.round >= game.total) return goPlayResult("space");
+  const cells = game.size * game.size;
+  startPlayClock("space", {
+    noClock: game.noClock,
+    limitMs: game.limitMs,
+    onExpire: () => {
+      if (game.failed || game.lock) return;
+      if (game.perRound) {
+        expireSpaceRound();
+        return;
+      }
+      game.failed = true;
+      renderSpace();
+    },
+  });
+  app.innerHTML = chrome(
+    `
+      <div class="space-play">
+        <div class="space-head">
+          <div class="space-copy">
+            <a class="back-link" href="#/brain">← 脳トレ一覧</a>
+            <p class="kicker">かたち合わせ</p>
+            ${playClockHtml()}
+            <h1 class="theme">見本 ${game.round + 1} / ${game.total}</h1>
+            <p class="help">右上の見本と同じマスを押してください。もう一度押すと消えます。${spaceTimeHelp(game)}</p>
+          </div>
+          <aside class="space-sample">
+            <p class="check-lab">見本</p>
+            ${shapeTiles(game.target, undefined, game.size, "mini")}
+          </aside>
+        </div>
+        <p class="check-lab">あなたの答え</p>
+        <div class="shape-grid play size-${game.size}">${Array.from({ length: cells }, (_, i) =>
+          `<button type="button" class="${game.pick.includes(i) ? "on" : ""}" data-cell="${i}"></button>`
+        ).join("")}</div>
+      </div>
     `,
     "brain"
   );
   bindTop();
   app.querySelectorAll("[data-cell]").forEach((btn) => {
     btn.addEventListener("click", () => {
+      if (game.failed || game.lock) return;
       const i = Number(btn.dataset.cell);
       if (game.pick.includes(i)) game.pick = game.pick.filter((x) => x !== i);
       else game.pick.push(i);
-      renderSpace();
+      btn.classList.toggle("on", game.pick.includes(i));
+      if (spaceMatches(game)) {
+        game.lock = true;
+        advanceSpace(true);
+      }
     });
   });
-  app.querySelector("[data-space-ok]")?.addEventListener("click", () => {
-    const a = game.pick.slice().sort((x, y) => x - y).join(",");
-    const b = game.target.slice().sort((x, y) => x - y).join(",");
-    if (a === b) game.ok += 1;
-    game.round += 1;
-    game.target = randomPattern(game.size, game.fill);
-    game.pick = [];
-    const run = window.__playRun;
-    if (game.perRound && run && game.round < game.total) {
-      run.timedOut = false;
-      run.limitMs = game.limitMs;
-      run.endsAt = Date.now() + game.limitMs;
-    }
-    renderSpace();
-  });
+}
+
+function stopMoodReveal() {
+  if (window.__moodReveal) {
+    window.clearTimeout(window.__moodReveal);
+    window.__moodReveal = 0;
+  }
 }
 
 function ensureMood() {
   if (!window.__mood) {
-    const spec = brainDiffSpec("mood");
     const pool = MOODS.flatMap((m) =>
       (m.photos || [m.photo]).map((photo) => ({ id: m.id, label: m.label, photo }))
     );
-    const qs = shuffleList(pool).slice(0, 6).map((q) => {
-      if (!spec.onomato) return q;
-      const words = MOOD_ONOMATOPEIA.filter((w) => w.mood === q.id);
-      const pick = words.length ? shuffleList(words)[0] : MOOD_ONOMATOPEIA[0];
-      return { ...q, answerWord: pick.word };
-    });
-    window.__mood = { i: 0, qs, score: 0, onomato: spec.onomato };
+    window.__mood = { i: 0, qs: shuffleList(pool).slice(0, 6), score: 0, lock: false, reveal: null };
   }
   return window.__mood;
 }
@@ -1267,34 +1348,49 @@ function renderMood() {
   if (game.i >= game.qs.length) return goPlayResult("mood");
   startPlayClock("mood", { noClock: true });
   const q = game.qs[game.i];
-  const options = game.onomato
-    ? MOOD_ONOMATOPEIA.map((w) => ({ key: w.word, label: w.word }))
-    : MOODS.map((m) => ({ key: m.id, label: m.label }));
+  const reveal = game.reveal;
   app.innerHTML = chrome(
     `
       <a class="back-link" href="#/brain">← 脳トレ一覧</a>
       <p class="kicker">きもち読み　${game.i + 1} / ${game.qs.length}</p>
       ${playClockHtml()}
-      <h1 class="theme">この人は、どんな気持ち？</h1>
+      ${
+        reveal
+          ? `<p class="mood-judge ${reveal.ok ? "ok" : "ng"}">${reveal.ok ? "正解！" : "はずれ"}</p>
+             <p class="mood-answer">答えは「${escapeHtml(q.label)}」です</p>`
+          : `<h1 class="theme">この人は、どんな気持ち？</h1>`
+      }
       <div class="mood-hero">${moodVisual(q.id, q.photo)}</div>
-      <div class="palette ${game.onomato ? "dense" : ""}">${options
-        .map(
-          (m) =>
-            `<button type="button" class="pal ${game.onomato ? "" : "wide"}" data-mood="${escapeHtml(
-              m.key
-            )}">${escapeHtml(m.label)}</button>`
-        )
-        .join("")}</div>
+      <div class="palette">${MOODS.map((m) => {
+        let cls = "pal wide";
+        if (reveal) {
+          if (m.id === q.id) cls += " yes";
+          if (m.id === reveal.picked && !reveal.ok) cls += " no";
+        }
+        return `<button type="button" class="${cls}" data-mood="${m.id}" ${
+          reveal ? "disabled" : ""
+        }>${escapeHtml(m.label)}</button>`;
+      }).join("")}</div>
     `,
     "brain"
   );
   bindTop();
   app.querySelectorAll("[data-mood]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const ok = game.onomato ? btn.dataset.mood === q.answerWord : btn.dataset.mood === q.id;
+      if (game.lock || game.reveal) return;
+      const picked = btn.dataset.mood;
+      const ok = picked === q.id;
       if (ok) game.score += 1;
-      game.i += 1;
+      game.lock = true;
+      game.reveal = { ok, picked };
       renderMood();
+      stopMoodReveal();
+      window.__moodReveal = window.setTimeout(() => {
+        game.i += 1;
+        game.lock = false;
+        game.reveal = null;
+        renderMood();
+      }, 900);
     });
   });
 }
