@@ -1,5 +1,6 @@
 const KEY_BASE = "today-family-v7";
 const CLOUD_ORIGIN_KEY = "nicopoke-cloud-origin-v1";
+const PUBLIC_CLOUD_ORIGIN = "https://nicopoke.vercel.app";
 
 function namespacedKey(base) {
   const path = String(location.pathname || "/")
@@ -193,13 +194,28 @@ function isStaticHost(hostname) {
   return /\.github\.io$/i.test(host);
 }
 
+function hasOwnCloudApi() {
+  const host = String(location.hostname || "");
+  if (location.protocol === "file:") return false;
+  if (!host || host === "localhost" || host === "127.0.0.1") return false;
+  if (isStaticHost(host)) return false;
+  return true;
+}
+
+function cloudOrigin() {
+  if (hasOwnCloudApi()) return String(location.origin || "").replace(/\/$/, "");
+  const remembered = rememberedCloudOrigin();
+  if (remembered) return String(remembered).replace(/\/$/, "");
+  return PUBLIC_CLOUD_ORIGIN;
+}
+
 function cloudUrls(code) {
   const query = code
     ? `code=${encodeURIComponent(normalizeCode(code))}`
     : "ping=1";
-  const here = String(location.origin || "").replace(/\/$/, "");
-  if (!here || isStaticHost()) return [];
-  return [`${here}/api/group?${query}`];
+  const origin = cloudOrigin();
+  if (!origin) return [];
+  return [`${origin}/api/group?${query}`];
 }
 
 function parseCloudBody(text) {
