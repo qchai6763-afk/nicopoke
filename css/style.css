@@ -2162,6 +2162,37 @@ a.notice.check-cta {
   background: #ffe07a;
 }
 
+.pal.yes {
+  background: #8ee3c4;
+}
+
+.pal.no {
+  background: #ffb3c0;
+}
+
+.mood-judge {
+  margin: 0 0 8px;
+  text-align: center;
+  font-size: 1.2rem;
+  font-weight: 900;
+}
+
+.mood-judge.ok {
+  color: #1a7a3a;
+}
+
+.mood-judge.ng {
+  color: #c0392b;
+}
+
+.mood-answer {
+  margin: 0 4px 12px;
+  text-align: center;
+  font-weight: 800;
+  line-height: 1.5;
+  color: #4a352c;
+}
+
 .week-pal {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

@@ -71,8 +71,8 @@ const DIFF_KINDS = ["quiz", "order", "space", "mood"];
 const DIFF_SPECS = {
   space: {
     easy: { total: 5, size: 3, fill: 4, noClock: true, limitMs: 0, perRound: false },
-    normal: { total: 10, size: 3, fill: 4, noClock: true, limitMs: 0, perRound: false },
-    hard: { total: 15, size: 4, fill: 6, noClock: false, limitMs: 20000, perRound: true },
+    normal: { total: 10, size: 3, fill: 4, noClock: false, limitMs: 5000, perRound: true },
+    hard: { total: 15, size: 4, fill: 6, noClock: false, limitMs: 30000, perRound: false },
   },
   order: {
     easy: { max: 5, noClock: true, limitMs: 0 },
@@ -93,8 +93,8 @@ const DIFF_SPECS = {
 const DIFF_HELP = {
   space: {
     easy: "見本は5回、3×3マス。時間制限はありません。",
-    normal: "見本は10回、3×3マス。時間制限はありません。",
-    hard: "見本は15回、4×4マス。1問20秒です。",
+    normal: "見本は10回、3×3マス。1問5秒です。見本と同じになったら次へ進みます。",
+    hard: "見本は15回、4×4マス。全問通しで30秒です。見本と同じになったら次へ進みます。",
   },
   order: {
     easy: "1から5まで。時間制限はありません。",
@@ -302,7 +302,10 @@ function freshBrainGame(kind) {
   if (kind === "quiz") startQuiz();
   if (kind === "order") window.__order = null;
   if (kind === "space") window.__space = null;
-  if (kind === "mood") window.__mood = null;
+  if (kind === "mood") {
+    stopMoodReveal();
+    window.__mood = null;
+  }
   if (kind === "nazo") startNazo();
 }
 
@@ -589,7 +592,7 @@ const BRAIN_INTRO = {
     steps: [
       "簡単・普通・難しいで、回数とマスの大きさが変わります。",
       "上の見本を見て、下の空のマスを押して同じ形をつくります。",
-      "できたら「できた」を押します。難しいは1問20秒です。",
+      "見本と同じになった瞬間に次へ進みます。普通は1問5秒、難しいは全問通しで30秒です。",
     ],
   },
   mood: {
@@ -600,7 +603,7 @@ const BRAIN_INTRO = {
     steps: [
       "大きな顔を、ゆっくり見てください。",
       "簡単・普通は、8つの気持ちから選びます。",
-      "難しいは、擬音語・擬態語20語から、細かい心の動きを読みます。",
+      "押した瞬間に正解・はずれと答えが出て、次の問題へ進みます。難しいは擬音語・擬態語20語からです。",
     ],
   },
   nazo: {
@@ -1152,6 +1155,20 @@ function randomPattern(size = 3, fill = 4) {
   return cells.sort((a, b) => a - b);
 }
 
+function spacePickKey(list) {
+  return (list || []).slice().sort((x, y) => x - y).join(",");
+}
+
+function spaceMatches(game) {
+  return spacePickKey(game.pick) === spacePickKey(game.target);
+}
+
+function spaceTimeHelp(game) {
+  if (game.perRound && game.limitMs) return `1問 ${game.limitMs / 1000} 秒です。見本と同じになったら次へ進みます。`;
+  if (game.limitMs) return `全問通しで ${game.limitMs / 1000} 秒です。見本と同じになったら次へ進みます。`;
+  return "時間制限はありません。見本と同じになったら次へ進みます。";
+}
+
 function ensureSpace() {
   if (!window.__space) {
     const spec = brainDiffSpec("space");
@@ -1166,39 +1183,85 @@ function ensureSpace() {
       noClock: spec.noClock,
       limitMs: spec.limitMs,
       perRound: spec.perRound,
+      failed: false,
+      lock: false,
     };
   }
   return window.__space;
 }
 
-function expireSpaceRound() {
+function resetSpaceRoundClock() {
   const game = window.__space;
   const run = window.__playRun;
-  if (!game) return;
+  if (!game || !game.perRound || !run || !game.limitMs) return;
+  run.timedOut = false;
+  run.limitMs = game.limitMs;
+  run.endsAt = Date.now() + game.limitMs;
+}
+
+function advanceSpace(ok) {
+  const game = window.__space;
+  const run = window.__playRun;
+  if (!game || game.failed) return;
+  if (ok) game.ok += 1;
   game.round += 1;
-  game.target = randomPattern(game.size, game.fill);
   game.pick = [];
-  if (game.round >= game.total) {
-    if (run) run.timedOut = true;
-    goPlayResult("space");
-    return;
-  }
-  if (run) {
-    run.timedOut = false;
-    run.limitMs = game.limitMs;
-    run.endsAt = Date.now() + game.limitMs;
-  }
+  game.target = randomPattern(game.size, game.fill);
+  game.lock = false;
+  if (run) run.timedOut = false;
+  if (game.round >= game.total) return goPlayResult("space");
+  resetSpaceRoundClock();
   renderSpace();
+}
+
+function expireSpaceRound() {
+  const game = window.__space;
+  if (!game || game.failed) return;
+  advanceSpace(false);
+}
+
+function renderSpaceFail() {
+  stopPlayClock();
+  const game = ensureSpace();
+  app.innerHTML = chrome(
+    `
+      <a class="back-link" href="#/brain">← 脳トレ一覧</a>
+      <p class="kicker">かたち合わせ</p>
+      <h1 class="theme">時間切れ</h1>
+      <div class="play-result">
+        <p class="play-rank"><span>⏰</span>失敗</p>
+        <p class="help">全問通しで ${game.limitMs / 1000} 秒に間に合いませんでした。見本 ${game.round} / ${
+          game.total
+        } まで進みました。</p>
+        <button class="primary" type="button" data-space-retry>はじめから</button>
+        <a class="ghost" href="#/brain">やめる</a>
+      </div>
+    `,
+    "brain"
+  );
+  bindTop();
+  app.querySelector("[data-space-retry]")?.addEventListener("click", () => {
+    restartBrainGame("space");
+  });
 }
 
 function renderSpace() {
   const game = ensureSpace();
+  if (game.failed) return renderSpaceFail();
   if (game.round >= game.total) return goPlayResult("space");
   const cells = game.size * game.size;
   startPlayClock("space", {
     noClock: game.noClock,
-    limitMs: game.perRound ? game.limitMs : 0,
-    onExpire: game.perRound ? expireSpaceRound : null,
+    limitMs: game.limitMs,
+    onExpire: () => {
+      if (game.failed || game.lock) return;
+      if (game.perRound) {
+        expireSpaceRound();
+        return;
+      }
+      game.failed = true;
+      renderSpace();
+    },
   });
   app.innerHTML = chrome(
     `
@@ -1206,43 +1269,37 @@ function renderSpace() {
       <p class="kicker">かたち合わせ</p>
       ${playClockHtml()}
       <h1 class="theme">見本 ${game.round + 1} / ${game.total}</h1>
-      <p class="help">上の見本と同じマスを、下で押してください。もう一度押すと消えます。${
-        game.perRound ? `1問 ${game.limitMs / 1000} 秒です。` : "時間制限はありません。"
-      }</p>
+      <p class="help">上の見本と同じマスを、下で押してください。もう一度押すと消えます。${spaceTimeHelp(game)}</p>
       <p class="check-lab">見本</p>
       ${shapeTiles(game.target, undefined, game.size)}
       <p class="check-lab">あなたの答え</p>
       <div class="shape-grid play size-${game.size}">${Array.from({ length: cells }, (_, i) =>
         `<button type="button" class="${game.pick.includes(i) ? "on" : ""}" data-cell="${i}"></button>`
       ).join("")}</div>
-      <button class="primary" type="button" data-space-ok>できた</button>
     `,
     "brain"
   );
   bindTop();
   app.querySelectorAll("[data-cell]").forEach((btn) => {
     btn.addEventListener("click", () => {
+      if (game.failed || game.lock) return;
       const i = Number(btn.dataset.cell);
       if (game.pick.includes(i)) game.pick = game.pick.filter((x) => x !== i);
       else game.pick.push(i);
-      renderSpace();
+      btn.classList.toggle("on", game.pick.includes(i));
+      if (spaceMatches(game)) {
+        game.lock = true;
+        advanceSpace(true);
+      }
     });
   });
-  app.querySelector("[data-space-ok]")?.addEventListener("click", () => {
-    const a = game.pick.slice().sort((x, y) => x - y).join(",");
-    const b = game.target.slice().sort((x, y) => x - y).join(",");
-    if (a === b) game.ok += 1;
-    game.round += 1;
-    game.target = randomPattern(game.size, game.fill);
-    game.pick = [];
-    const run = window.__playRun;
-    if (game.perRound && run && game.round < game.total) {
-      run.timedOut = false;
-      run.limitMs = game.limitMs;
-      run.endsAt = Date.now() + game.limitMs;
-    }
-    renderSpace();
-  });
+}
+
+function stopMoodReveal() {
+  if (window.__moodReveal) {
+    window.clearTimeout(window.__moodReveal);
+    window.__moodReveal = 0;
+  }
 }
 
 function ensureMood() {
@@ -1257,7 +1314,7 @@ function ensureMood() {
       const pick = words.length ? shuffleList(words)[0] : MOOD_ONOMATOPEIA[0];
       return { ...q, answerWord: pick.word };
     });
-    window.__mood = { i: 0, qs, score: 0, onomato: spec.onomato };
+    window.__mood = { i: 0, qs, score: 0, onomato: spec.onomato, lock: false, reveal: null };
   }
   return window.__mood;
 }
@@ -1267,23 +1324,35 @@ function renderMood() {
   if (game.i >= game.qs.length) return goPlayResult("mood");
   startPlayClock("mood", { noClock: true });
   const q = game.qs[game.i];
+  const answerKey = game.onomato ? q.answerWord : q.id;
+  const answerLabel = game.onomato ? q.answerWord : q.label;
   const options = game.onomato
     ? MOOD_ONOMATOPEIA.map((w) => ({ key: w.word, label: w.word }))
     : MOODS.map((m) => ({ key: m.id, label: m.label }));
+  const reveal = game.reveal;
   app.innerHTML = chrome(
     `
       <a class="back-link" href="#/brain">← 脳トレ一覧</a>
       <p class="kicker">きもち読み　${game.i + 1} / ${game.qs.length}</p>
       ${playClockHtml()}
-      <h1 class="theme">この人は、どんな気持ち？</h1>
+      ${
+        reveal
+          ? `<p class="mood-judge ${reveal.ok ? "ok" : "ng"}">${reveal.ok ? "正解！" : "はずれ"}</p>
+             <p class="mood-answer">答えは「${escapeHtml(answerLabel)}」です</p>`
+          : `<h1 class="theme">この人は、どんな気持ち？</h1>`
+      }
       <div class="mood-hero">${moodVisual(q.id, q.photo)}</div>
       <div class="palette ${game.onomato ? "dense" : ""}">${options
-        .map(
-          (m) =>
-            `<button type="button" class="pal ${game.onomato ? "" : "wide"}" data-mood="${escapeHtml(
-              m.key
-            )}">${escapeHtml(m.label)}</button>`
-        )
+        .map((m) => {
+          let cls = `pal ${game.onomato ? "" : "wide"}`;
+          if (reveal) {
+            if (m.key === answerKey) cls += " yes";
+            if (m.key === reveal.picked && !reveal.ok) cls += " no";
+          }
+          return `<button type="button" class="${cls}" data-mood="${escapeHtml(m.key)}" ${
+            reveal ? "disabled" : ""
+          }>${escapeHtml(m.label)}</button>`;
+        })
         .join("")}</div>
     `,
     "brain"
@@ -1291,10 +1360,20 @@ function renderMood() {
   bindTop();
   app.querySelectorAll("[data-mood]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const ok = game.onomato ? btn.dataset.mood === q.answerWord : btn.dataset.mood === q.id;
+      if (game.lock || game.reveal) return;
+      const picked = btn.dataset.mood;
+      const ok = picked === answerKey;
       if (ok) game.score += 1;
-      game.i += 1;
+      game.lock = true;
+      game.reveal = { ok, picked };
       renderMood();
+      stopMoodReveal();
+      window.__moodReveal = window.setTimeout(() => {
+        game.i += 1;
+        game.lock = false;
+        game.reveal = null;
+        renderMood();
+      }, 900);
     });
   });
 }
