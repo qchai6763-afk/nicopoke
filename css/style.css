@@ -110,6 +110,10 @@ select {
   padding: 16px 20px 136px;
 }
 
+.screen.play-fill {
+  padding-bottom: 28px;
+}
+
 .tabbar {
   position: fixed;
   left: 50%;

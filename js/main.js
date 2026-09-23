@@ -175,6 +175,7 @@ function chrome(inner, active) {
   const n = streakFor(user.id);
   const risk = streakAtRisk(user.id);
   const pop = window.__streakPop || 0;
+  const hideTabs = typeof brainPlaying === "function" && brainPlaying();
   return `
     <div class="phone">
       <header class="top">
@@ -192,17 +193,21 @@ function chrome(inner, active) {
           <a href="#/me" class="avatar-link">${avatarMark(user)}</a>
         </div>
       </header>
-      <main class="screen">${
+      <main class="screen${hideTabs ? " play-fill" : ""}">${
         window.__gateWarn
           ? `<div class="notice">${escapeHtml(window.__gateWarn)}</div>`
           : ""
       }${inner}</main>
-      <nav class="tabbar">
+      ${
+        hideTabs
+          ? ""
+          : `<nav class="tabbar">
         <a href="#/today" class="${active === "today" ? "active" : ""}">${ICO.cam}<span>今日</span></a>
         <a href="#/feed" class="${active === "feed" ? "active" : ""}">${ICO.grid}<span>家族</span></a>
         <a href="#/brain" class="${active === "brain" ? "active" : ""}">${ICO.play}<span>息抜き</span></a>
         <a href="#/me" class="${active === "me" ? "active" : ""}">${ICO.me}<span>わたし</span></a>
-      </nav>
+      </nav>`
+      }
       ${
         pop
           ? `<div class="pop" data-pop>
