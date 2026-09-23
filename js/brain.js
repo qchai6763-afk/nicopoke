@@ -75,9 +75,9 @@ const DIFF_SPECS = {
     hard: { total: 15, size: 4, fill: 6, noClock: false, limitMs: 30000, perRound: false },
   },
   order: {
-    easy: { max: 5, noClock: true, limitMs: 0 },
-    normal: { max: 15, noClock: true, limitMs: 0 },
-    hard: { max: 10, noClock: false, limitMs: 15000 },
+    easy: { max: 5, total: 3, noClock: true, limitMs: 0 },
+    normal: { max: 15, total: 3, noClock: true, limitMs: 0 },
+    hard: { max: 10, total: 3, noClock: false, limitMs: 15000 },
   },
   mood: {
     easy: { onomato: false, noClock: true },
@@ -97,9 +97,9 @@ const DIFF_HELP = {
     hard: "見本は15回、4×4マス。全問通しで30秒です。見本と同じになったら次へ進みます。",
   },
   order: {
-    easy: "1から5まで。時間制限はありません。",
-    normal: "1から15まで。じっくりマイペースに。",
-    hard: "1から10まで。15秒の制限時間があります。",
+    easy: "1から5までを3回。時間制限はありません。",
+    normal: "1から15までを3回。じっくりマイペースに。",
+    hard: "1から10までを3回通し。全部で15秒です。",
   },
   mood: {
     easy: "8つの気持ちから選びます。",
@@ -348,9 +348,7 @@ function playResultNote(kind) {
     return `${timeout}${window.__mood.score} / ${window.__mood.qs.length} 問 正解`;
   }
   if (kind === "order" && window.__order) {
-    return timeout
-      ? `${timeout}つぎは ${window.__order.next} でした`
-      : `1から ${window.__order.max} まで押せました`;
+    return `${timeout}${window.__order.ok} / ${window.__order.total} 回 できた`;
   }
   if (kind === "space" && window.__space) {
     return `${timeout}${window.__space.ok} / ${window.__space.total} 問 できた`;
@@ -580,8 +578,8 @@ const BRAIN_INTRO = {
     lead: "バラバラの数字を、1から順にポチポチ押します。難易度を選べます。",
     steps: [
       "簡単・普通・難しいから選びます。数字の個数と制限時間が変わります。",
-      "いちばん小さい数字から探します。まちがえたら、また1からやりなおします。",
-      "最後の数字まで押せたら終わりです。",
+      "いちばん小さい数字から探します。まちがえたら、その回は1からやりなおします。",
+      "1セット押せたら次の配置です。全部で3回できたら終わりです。難しいは3回通しで15秒です。",
     ],
   },
   space: {
@@ -591,7 +589,7 @@ const BRAIN_INTRO = {
     lead: "見本と同じマスを、同じ位置で押します。難易度を選べます。",
     steps: [
       "簡単・普通・難しいで、回数とマスの大きさが変わります。",
-      "上の見本を見て、下の空のマスを押して同じ形をつくります。",
+      "右上の小さな見本を見て、下の空のマスを押して同じ形をつくります。",
       "見本と同じになった瞬間に次へ進みます。普通は1問5秒、難しいは全問通しで30秒です。",
     ],
   },
@@ -1090,15 +1088,38 @@ function ensureOrder() {
     const spec = brainDiffSpec("order");
     const max = spec.max;
     window.__order = {
+      round: 0,
+      total: spec.total || 3,
+      ok: 0,
       next: 1,
       max,
       won: false,
       layout: shuffleList(orderNums(max)),
       noClock: spec.noClock,
       limitMs: spec.limitMs,
+      failed: false,
     };
   }
   return window.__order;
+}
+
+function resetOrderBoard(game) {
+  game.next = 1;
+  game.layout = shuffleList(orderNums(game.max));
+}
+
+function finishOrderRound(ok) {
+  const game = window.__order;
+  if (!game || game.won || game.failed) return;
+  if (ok) game.ok += 1;
+  game.round += 1;
+  if (game.round >= game.total) {
+    game.won = true;
+    goPlayResult("order");
+    return;
+  }
+  resetOrderBoard(game);
+  renderOrder();
 }
 
 function renderOrder() {
@@ -1107,17 +1128,21 @@ function renderOrder() {
   startPlayClock("order", {
     noClock: game.noClock,
     limitMs: game.limitMs,
-    onExpire: () => goPlayResult("order"),
+    onExpire: () => {
+      if (game.won || game.failed) return;
+      game.failed = true;
+      goPlayResult("order");
+    },
   });
   app.innerHTML = chrome(
     `
       <a class="back-link" href="#/brain">← 脳トレ一覧</a>
-      <p class="kicker">数字タッチ</p>
+      <p class="kicker">数字タッチ　${game.round + 1} / ${game.total} 回</p>
       ${playClockHtml()}
       <h1 class="theme">${game.won ? "全部押せました！" : `つぎは ${game.next}`}</h1>
-      <p class="help">1から ${game.max} まで、小さい順に押してください。まちがえたら 1 からやり直しです。${
-        game.limitMs ? `制限時間は ${game.limitMs / 1000} 秒です。` : "時間制限はありません。"
-      }</p>
+      <p class="help">1から ${game.max} まで、小さい順に押してください。まちがえたら 1 からやり直しです。全部で ${
+        game.total
+      } 回です。${game.limitMs ? `3回通しで ${game.limitMs / 1000} 秒です。` : "時間制限はありません。"}</p>
       <div class="num-scatter n-${game.max}">${game.layout
         .map((n) => {
           const done = n < game.next || game.won;
@@ -1126,14 +1151,14 @@ function renderOrder() {
           }>${n}</button>`;
         })
         .join("")}</div>
-      <button class="ghost" type="button" data-order-new>もう一度</button>
+      <button class="ghost" type="button" data-order-new>はじめから</button>
     `,
     "brain"
   );
   bindTop();
   app.querySelectorAll("[data-num]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      if (game.won) return;
+      if (game.won || game.failed) return;
       const n = Number(btn.dataset.num);
       if (n !== game.next) {
         game.next = 1;
@@ -1141,7 +1166,10 @@ function renderOrder() {
         return;
       }
       game.next += 1;
-      if (game.next > game.max) game.won = true;
+      if (game.next > game.max) {
+        finishOrderRound(true);
+        return;
+      }
       renderOrder();
     });
   });
@@ -1265,17 +1293,25 @@ function renderSpace() {
   });
   app.innerHTML = chrome(
     `
-      <a class="back-link" href="#/brain">← 脳トレ一覧</a>
-      <p class="kicker">かたち合わせ</p>
-      ${playClockHtml()}
-      <h1 class="theme">見本 ${game.round + 1} / ${game.total}</h1>
-      <p class="help">上の見本と同じマスを、下で押してください。もう一度押すと消えます。${spaceTimeHelp(game)}</p>
-      <p class="check-lab">見本</p>
-      ${shapeTiles(game.target, undefined, game.size)}
-      <p class="check-lab">あなたの答え</p>
-      <div class="shape-grid play size-${game.size}">${Array.from({ length: cells }, (_, i) =>
-        `<button type="button" class="${game.pick.includes(i) ? "on" : ""}" data-cell="${i}"></button>`
-      ).join("")}</div>
+      <div class="space-play">
+        <div class="space-head">
+          <div class="space-copy">
+            <a class="back-link" href="#/brain">← 脳トレ一覧</a>
+            <p class="kicker">かたち合わせ</p>
+            ${playClockHtml()}
+            <h1 class="theme">見本 ${game.round + 1} / ${game.total}</h1>
+            <p class="help">右上の見本と同じマスを押してください。もう一度押すと消えます。${spaceTimeHelp(game)}</p>
+          </div>
+          <aside class="space-sample">
+            <p class="check-lab">見本</p>
+            ${shapeTiles(game.target, undefined, game.size, "mini")}
+          </aside>
+        </div>
+        <p class="check-lab">あなたの答え</p>
+        <div class="shape-grid play size-${game.size}">${Array.from({ length: cells }, (_, i) =>
+          `<button type="button" class="${game.pick.includes(i) ? "on" : ""}" data-cell="${i}"></button>`
+        ).join("")}</div>
+      </div>
     `,
     "brain"
   );

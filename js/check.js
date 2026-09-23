@@ -83,9 +83,10 @@ function keypadHtml(name) {
     .join("")}</div>`;
 }
 
-function shapeTiles(cells, highlight, size = 3) {
+function shapeTiles(cells, highlight, size = 3, extraClass = "") {
   const n = size * size;
-  return `<div class="shape-grid size-${size}" aria-hidden="true">${Array.from({ length: n }, (_, i) =>
+  const cls = `shape-grid size-${size} ${extraClass}`.trim();
+  return `<div class="${cls}" aria-hidden="true">${Array.from({ length: n }, (_, i) =>
     `<span class="${cells.includes(i) ? "on" : ""} ${highlight === i ? "hi" : ""}"></span>`
   ).join("")}</div>`;
 }
