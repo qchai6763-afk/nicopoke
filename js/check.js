@@ -517,7 +517,7 @@ function renderCheckResult() {
     : "どれも元気そうです。今日は気分転換に、この脳トレをどうぞ。";
   renderCheckShell(`
     <p class="kicker">今日の脳の元気予報</p>
-    <h1 class="theme">診断結果</h1>
+    <h1 class="theme">今日の元気予報</h1>
     <p class="help">病院の診断ではありません。今日の調子の目安です。</p>
     <ul class="check-report">${rows}</ul>
     <div class="check-rec">

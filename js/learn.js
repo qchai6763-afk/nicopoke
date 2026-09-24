@@ -29,7 +29,7 @@ function renderLearn() {
 
       <article class="learn-card">
         <div class="learn-ico" aria-hidden="true">🌱</div>
-        <h2>認知症の予防方法</h2>
+        <h2>予防につながるといわれる習慣</h2>
         <img class="learn-art" src="img/learn-train.png" alt="散歩や会話、脳トレで頭と体を動かしているイラスト" />
         <ul class="learn-list">
           <li><b>知的活動</b>音読、計算、脳トレゲームなどで、脳を刺激します。</li>

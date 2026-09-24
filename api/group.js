@@ -43,9 +43,7 @@ function upsertById(list, item, mergeFn) {
   else list[i] = mergeFn ? mergeFn(list[i], item) : item;
 }
 
-function mergeQuest(local, incoming) {
-  if (!local) return incoming;
-  if (!incoming) return local;
+function pickQuest(local, incoming) {
   const localPosted = Boolean(local.photoDataUrl);
   const incomingPosted = Boolean(incoming.photoDataUrl);
   if (incomingPosted && !localPosted) return incoming;
@@ -54,7 +52,6 @@ function mergeQuest(local, incoming) {
       photoDataUrl: local.photoDataUrl,
       caption: incoming.caption || local.caption,
       postedAt: incoming.postedAt || local.postedAt,
-      revealed: incoming.revealed || local.revealed,
     });
   }
   if ((incoming.postedAt || 0) > (local.postedAt || 0)) return incoming;
@@ -63,11 +60,39 @@ function mergeQuest(local, incoming) {
   });
 }
 
+function settleQuest(quest, a, b) {
+  const out = Object.assign({}, quest);
+  const deletedAt = Math.max(a.deletedAt || 0, b.deletedAt || 0);
+  const revealedAt = Math.max(a.revealedAt || 0, b.revealedAt || 0);
+  if (deletedAt) {
+    out.deletedAt = deletedAt;
+    if ((out.postedAt || 0) <= deletedAt) {
+      out.photoDataUrl = "";
+      out.caption = "";
+      out.postedAt = null;
+      out.hasPhoto = false;
+    }
+  }
+  if (revealedAt) out.revealedAt = revealedAt;
+  out.revealed = Boolean(out.postedAt && revealedAt >= out.postedAt);
+  return out;
+}
+
+function mergeQuest(local, incoming) {
+  if (!local) return incoming;
+  if (!incoming) return local;
+  return settleQuest(pickQuest(local, incoming), local, incoming);
+}
+
 function mergeUser(local, incoming) {
   if (!local) return incoming;
   if (!incoming) return local;
   const out = Object.assign({}, local, incoming);
   if (!incoming.photo && local.photo) out.photo = local.photo;
+  out.left = Boolean(local.left || incoming.left);
+  if (out.left) {
+    Object.assign(out, { name: "退出したメンバー", shortName: "退出", handle: "", photo: "", icon: "👋" });
+  }
   return out;
 }
 
@@ -310,21 +335,7 @@ module.exports = async function handler(req, res) {
 
     const url = new URL(req.url, "http://localhost");
     if (url.searchParams.get("ping")) {
-      send(res, 200, {
-        ok: true,
-        store: STORE_NAME,
-        blob: Boolean(blobToken()),
-        oidc: Boolean(process.env.VERCEL_OIDC_TOKEN),
-        storeId: Boolean(storeIdFromToken(blobToken())),
-        blobKeys: Object.keys(process.env).filter((k) => /BLOB/i.test(k)),
-        tokenKind: blobToken().startsWith("vercel_blob_rw_")
-          ? "rw"
-          : blobToken().startsWith("eyJ")
-            ? "jwt"
-            : blobToken()
-              ? "other"
-              : "none",
-      });
+      send(res, 200, { ok: true });
       return;
     }
 
@@ -339,7 +350,7 @@ module.exports = async function handler(req, res) {
     if (req.method === "GET") {
       const data = parseGroup(await store.get(code));
       if (!data) {
-        fail(res, 404, "NOT_FOUND", { code, key: code, blob: Boolean(blobToken()) });
+        fail(res, 404, "NOT_FOUND");
         return;
       }
       send(res, 200, data);
@@ -360,18 +371,18 @@ module.exports = async function handler(req, res) {
           ok: true,
           stored: true,
           errorCode: null,
-          store: STORE_NAME,
-          blob: Boolean(blobToken()),
-          group: { id: merged.group.id, code, key: code },
+          group: { id: merged.group.id, code },
         });
       } catch (err) {
-        fail(res, 500, "SAVE_FAILED", { message: String((err && err.message) || err), blob: Boolean(blobToken()) });
+        console.error("SAVE_FAILED", err);
+        fail(res, 500, "SAVE_FAILED");
       }
       return;
     }
 
     fail(res, 405, "METHOD");
   } catch (err) {
-    fail(res, 500, "STORE_UNAVAILABLE", { message: String((err && err.message) || err) });
+    console.error("STORE_UNAVAILABLE", err);
+    fail(res, 500, "STORE_UNAVAILABLE");
   }
 };
