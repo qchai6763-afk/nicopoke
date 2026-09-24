@@ -509,6 +509,7 @@ function guessUi(quest, viewerId) {
 
   if (mine) {
     return `<div class="guess-box">
+        <p class="guess-answer">答え：${escapeHtml(quest.theme)}</p>
         <p class="check-lab">みんなの予想</p>
         ${list || `<p class="help">まだだれも予想していません。</p>`}
       </div>`;
@@ -517,9 +518,11 @@ function guessUi(quest, viewerId) {
   const right = guessedRight(quest.id, viewerId);
   let form = "";
   if (right) {
-    form = `<p class="guess-note ok">当たりました！答えは「${escapeHtml(quest.theme)}」です。</p>`;
+    form = `<p class="guess-note ok">当たりました！</p>
+      <p class="guess-answer">答え：${escapeHtml(quest.theme)}</p>`;
   } else if (quest.revealed) {
-    form = `<p class="guess-note">${escapeHtml(userById(quest.userId)?.shortName || "")}さんが答えを見せてくれました。</p>`;
+    form = `<p class="guess-note">${escapeHtml(userById(quest.userId)?.shortName || "")}さんが答えを見せてくれました。</p>
+      <p class="guess-answer">答え：${escapeHtml(quest.theme)}</p>`;
   } else {
     form = `<form class="composer" data-guess="${quest.id}">
         <div class="actions">
