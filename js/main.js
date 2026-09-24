@@ -25,6 +25,8 @@ function escapeHtml(str = "") {
     .replaceAll('"', "&quot;");
 }
 
+const VISIBLE_COMMENTS = 5;
+
 function commentsOpen(questId) {
   return Boolean((window.__openComments || {})[questId]);
 }
@@ -541,25 +543,15 @@ function postCard(quest, viewerId) {
   const comments = commentsFor(quest.id)
     .slice()
     .sort((a, b) => (a.at || 0) - (b.at || 0));
-  const latest = comments[comments.length - 1];
   const likes = likeCount(quest.id);
   const liked = hasLiked(quest.id, viewerId);
   const expanded = commentsOpen(quest.id);
-
-  const peek = latest
-    ? `<button class="comment-peek" type="button" data-toggle-comments="${quest.id}">
-         <b>${escapeHtml(userById(latest.userId)?.shortName || "")}</b>
-         ${escapeHtml(latest.text)}
-         ${comments.length > 1 ? `<span>+${comments.length - 1}</span>` : ""}
-       </button>`
-    : posted
-      ? `<button class="comment-peek empty" type="button" data-toggle-comments="${quest.id}">💬 ひとこと</button>`
-      : "";
+  const hidden = expanded ? 0 : Math.max(0, comments.length - VISIBLE_COMMENTS);
+  const shown = comments.slice(hidden);
 
   const media = posted
     ? `<img src="${quest.photoDataUrl}" alt="" />
-       ${canSeeTheme(quest, viewerId) ? `<div class="tag">答え：${escapeHtml(quest.theme)}</div>` : ""}
-       ${peek}`
+       ${canSeeTheme(quest, viewerId) ? `<div class="tag">答え：${escapeHtml(quest.theme)}</div>` : ""}`
     : `<div class="locked"><div><span>🔒</span><em>waiting</em></div></div>`;
 
   const waitCopy = !posted
@@ -575,30 +567,34 @@ function postCard(quest, viewerId) {
 
   const talkUi = posted
     ? `<div class="talk">
+         ${
+           hidden || (expanded && comments.length > VISIBLE_COMMENTS)
+             ? `<button class="thread-toggle" type="button" data-toggle-comments="${quest.id}">
+                  ${expanded ? "前のコメントをしまう" : `前のコメントも見る（${hidden}）`}
+                </button>`
+             : ""
+         }
+         ${
+           shown.length
+             ? `<div class="thread open">
+                  ${shown
+                    .map((c) => {
+                      const cu = userById(c.userId);
+                      return `<div class="bubble ${c.userId === viewerId ? "me" : ""}">${avatarMark(
+                        cu,
+                        "tiny"
+                      )}<div><b>${escapeHtml(cu?.shortName || "")}</b>${escapeHtml(c.text)}</div></div>`;
+                    })
+                    .join("")}
+                </div>`
+             : ""
+         }
          <form class="composer" data-comment="${quest.id}">
            <div class="actions">
              <input class="pill" name="text" placeholder="コメントを書く" />
              <button class="pill-btn" type="submit">送る</button>
            </div>
          </form>
-         ${
-           comments.length
-             ? `<button class="thread-toggle" type="button" data-toggle-comments="${quest.id}">
-                  ${expanded ? "過去のコメントをしまう" : `過去のコメントを見る（${comments.length}）`}
-                </button>
-                <div class="thread ${expanded ? "open" : ""}">
-                  ${comments
-                    .map((c) => {
-                      const cu = userById(c.userId);
-                      return `<div class="bubble ${c.userId === viewerId ? "me" : ""}">${avatarMark(
-                        cu,
-                        "tiny"
-                      )}<div><b>${escapeHtml(cu.shortName)}</b>${escapeHtml(c.text)}</div></div>`;
-                    })
-                    .join("")}
-                </div>`
-             : ""
-         }
        </div>`
     : "";
 
