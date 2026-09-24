@@ -332,9 +332,7 @@ function upsertById(list, item) {
   else list[i] = item;
 }
 
-function mergeQuest(local, incoming) {
-  if (!local) return incoming;
-  if (!incoming) return local;
+function pickQuest(local, incoming) {
   const localPosted = Boolean(local.photoDataUrl);
   const incomingPosted = Boolean(incoming.photoDataUrl);
   if (incomingPosted && !localPosted) return incoming;
@@ -343,11 +341,45 @@ function mergeQuest(local, incoming) {
       photoDataUrl: local.photoDataUrl,
       caption: incoming.caption || local.caption,
       postedAt: incoming.postedAt || local.postedAt,
-      revealed: Boolean(incoming.revealed || local.revealed),
     });
   }
   if ((incoming.postedAt || 0) > (local.postedAt || 0)) return incoming;
   return local;
+}
+
+function settleQuest(quest, a, b) {
+  const out = Object.assign({}, quest);
+  const deletedAt = Math.max(a.deletedAt || 0, b.deletedAt || 0);
+  const revealedAt = Math.max(a.revealedAt || 0, b.revealedAt || 0);
+  if (deletedAt) {
+    out.deletedAt = deletedAt;
+    if ((out.postedAt || 0) <= deletedAt) {
+      out.photoDataUrl = "";
+      out.caption = "";
+      out.postedAt = null;
+      out.hasPhoto = false;
+    }
+  }
+  if (revealedAt) out.revealedAt = revealedAt;
+  out.revealed = Boolean(out.postedAt && revealedAt >= out.postedAt);
+  return out;
+}
+
+function mergeQuest(local, incoming) {
+  if (!local) return incoming;
+  if (!incoming) return local;
+  return settleQuest(pickQuest(local, incoming), local, incoming);
+}
+
+function scrubLeftUser(user) {
+  if (!user || !user.left) return user;
+  return Object.assign(user, {
+    name: "退出したメンバー",
+    shortName: "退出",
+    handle: "",
+    photo: "",
+    icon: "👋",
+  });
 }
 
 function mergeUser(local, incoming) {
@@ -355,7 +387,8 @@ function mergeUser(local, incoming) {
   if (!incoming) return local;
   const out = Object.assign({}, local, incoming);
   if (!incoming.photo && local.photo) out.photo = local.photo;
-  return out;
+  out.left = Boolean(local.left || incoming.left);
+  return scrubLeftUser(out);
 }
 
 function mergeSnapshot(snap) {
@@ -487,7 +520,7 @@ function groupMembers(groupId) {
   if (!group) return [];
   return group.memberIds
     .map((id) => state.users.find((u) => u.id === id))
-    .filter(Boolean);
+    .filter((u) => u && !u.left);
 }
 
 function makeId(prefix) {
@@ -686,7 +719,7 @@ function ensureTodayQuests(groupId) {
 function questsForGroup(groupId) {
   ensureTodayQuests(groupId);
   return state.quests
-    .filter((q) => q.groupId === groupId)
+    .filter((q) => q.groupId === groupId && !userById(q.userId)?.left)
     .sort((a, b) => {
       if (a.date === b.date) return (b.postedAt || 0) - (a.postedAt || 0);
       return a.date < b.date ? 1 : -1;
@@ -701,9 +734,7 @@ function canSeeTheme(quest, viewerId) {
   if (!quest) return false;
   if (quest.userId === viewerId) return true;
   if (quest.revealed) return true;
-  return state.guesses.some(
-    (g) => g.questId === quest.id && g.userId === viewerId && g.correct
-  );
+  return guessedRight(quest.id, viewerId);
 }
 
 function isPosted(quest) {
@@ -836,7 +867,8 @@ function postPhoto(questId, { photoDataUrl, caption }) {
   const before = streakFor(quest.userId);
   quest.photoDataUrl = photoDataUrl;
   quest.caption = String(caption || "").trim();
-  quest.postedAt = Date.now();
+  quest.postedAt = Math.max(Date.now(), (quest.deletedAt || 0) + 1);
+  quest.revealed = false;
   const after = streakFor(quest.userId);
   window.__streakPop = after > before || after === 1 ? after : 0;
   notify();
@@ -915,37 +947,131 @@ function guessChoices(quest) {
 }
 
 function revealTheme(questId) {
+  const user = currentUser();
   const quest = getQuest(questId);
-  if (!quest) return;
+  if (!user || !quest || quest.userId !== user.id || !isPosted(quest)) return;
+  quest.revealedAt = Math.max(Date.now(), quest.postedAt || 0);
   quest.revealed = true;
   notify();
+}
+
+function clearPost(quest, now) {
+  quest.deletedAt = Math.max(now, (quest.postedAt || 0) + 1);
+  quest.photoDataUrl = "";
+  quest.caption = "";
+  quest.postedAt = null;
+  quest.revealed = false;
+}
+
+function deletePost(questId) {
+  const user = currentUser();
+  const quest = getQuest(questId);
+  if (!user || !quest || quest.userId !== user.id || !isPosted(quest)) return;
+  clearPost(quest, Date.now());
+  notify();
+}
+
+async function leaveGroup() {
+  const user = currentUser();
+  const group = currentGroup();
+  if (!user || !group) return { ok: false, error: "グループがありません" };
+  const backup = JSON.stringify(state);
+  const now = Date.now();
+  state.quests.forEach((q) => {
+    if (q.userId === user.id && isPosted(q)) clearPost(q, now);
+  });
+  user.left = true;
+  user.leftAt = now;
+  scrubLeftUser(user);
+  persist();
+  const uploaded = await pushCloud(group.id);
+  if (!uploaded) {
+    state = JSON.parse(backup);
+    persist();
+    return {
+      ok: false,
+      error: "共有サーバーに届かなかったので、退出を取り消しました。通信を確かめて、もう一度試してください。",
+    };
+  }
+  state.currentUserId = null;
+  persist();
+  window.dispatchEvent(new Event("hidamari-change"));
+  return { ok: true };
+}
+
+function foldGuess(s) {
+  return String(s || "")
+    .normalize("NFKC")
+    .replace(/[ァ-ヶ]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60))
+    .replace(/[\s・、。,.!?！？「」『』()（）〜~ー-]/g, "")
+    .toLowerCase();
+}
+
+function keywordScore(guess, theme) {
+  return (THEME_KEYWORDS[theme] || []).filter((k) => guess.includes(foldGuess(k))).length;
+}
+
+function bigrams(s) {
+  const out = [];
+  for (let i = 0; i < s.length - 1; i += 1) out.push(s.slice(i, i + 2));
+  return out;
+}
+
+function looseMatch(guess, theme) {
+  if (guess.length >= 2 && (theme.includes(guess) || guess.includes(theme))) {
+    return Math.min(guess.length, theme.length) * 2 >= theme.length;
+  }
+  const a = bigrams(guess);
+  const b = bigrams(theme);
+  if (!a.length || !b.length) return false;
+  const hit = a.filter((x) => b.includes(x)).length;
+  return (2 * hit) / (a.length + b.length) >= 0.5;
+}
+
+function guessIsClose(text, theme) {
+  const guess = foldGuess(text);
+  const target = foldGuess(theme);
+  if (!guess) return false;
+  if (guess === target) return true;
+  if (!THEME_KEYWORDS[theme]) return looseMatch(guess, target);
+  const mine = keywordScore(guess, theme);
+  if (!mine) return false;
+  return THEMES.every((t) => t === theme || keywordScore(guess, t) <= mine);
+}
+
+function guessesFor(questId) {
+  const quest = getQuest(questId);
+  const since = (quest && quest.postedAt) || 0;
+  return state.guesses
+    .filter((g) => g.questId === questId && (g.at || 0) >= since)
+    .sort((a, b) => (a.at || 0) - (b.at || 0));
+}
+
+function myGuesses(questId, userId) {
+  return guessesFor(questId).filter((g) => g.userId === userId);
+}
+
+function guessedRight(questId, userId) {
+  return myGuesses(questId, userId).some((g) => g.correct);
 }
 
 function submitGuess(questId, text) {
   const user = currentUser();
   const quest = getQuest(questId);
-  const guessText = text.trim();
-  if (!user || !quest || !guessText) return null;
-  const normalize = (s) => s.replace(/\s+/g, "").toLowerCase();
-  const correct = normalize(guessText) === normalize(quest.theme) || quest.theme.includes(guessText) || guessText.includes(quest.theme);
+  const guessText = String(text || "").trim().slice(0, 30);
+  if (!user || !quest || !guessText || !isPosted(quest) || quest.userId === user.id) return null;
+  if (guessedRight(questId, user.id)) return null;
   const guess = {
-    id: `guess-${Date.now()}`,
+    id: makeId("guess"),
     questId,
     userId: user.id,
     text: guessText,
-    correct,
+    correct: guessIsClose(guessText, quest.theme),
     at: Date.now(),
   };
   state.guesses.push(guess);
-  if (correct) {
-    window.__guessPop = { theme: quest.theme };
-  }
   notify();
   return guess;
-}
-
-function guessesFor(questId) {
-  return state.guesses.filter((g) => g.questId === questId);
 }
 
 function addComment(questId, text) {

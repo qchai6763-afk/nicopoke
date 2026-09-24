@@ -247,6 +247,22 @@ function personFields(prefix, defaults = {}) {
   `;
 }
 
+function privacyListHtml() {
+  return `
+    <ul class="privacy-list">
+      <li>写真・一言コメント・名前・いいね・コメント・お題の予想は、グループの共有サーバーに保存されます。参加コードを知っている人は、これらを見られます。</li>
+      <li>脳トレの記録と元気予報の結果は、このスマホの中だけに残ります。家族には送られません。</li>
+      <li>写真に自分以外の人が写るときは、送る前にその人に聞いてください。</li>
+      <li>送った写真は、日がたってもアルバムに残り、「思い出神経衰弱」のカードとしてグループのみんなに表示されます。</li>
+      <li>自分の写真は、いつでも消せます。消すと共有サーバーからも消え、神経衰弱にも出なくなります。</li>
+      <li>グループから退出すると、自分の写真はすべて消え、名前は「退出したメンバー」になります。</li>
+    </ul>`;
+}
+
+function agreeFieldHtml() {
+  return `<label class="agree"><input type="checkbox" name="agree" required /> 「保存されるもの」を読んで、同意します</label>`;
+}
+
 function readPerson(form, prefix) {
   const data = new FormData(form);
   return {
@@ -255,7 +271,7 @@ function readPerson(form, prefix) {
 }
 
 function renderLogin() {
-  const { users } = getState();
+  const users = getState().users.filter((u) => !u.left);
   const err = window.__gateError || "";
   const warn = window.__gateWarn || "";
   window.__gateError = "";
@@ -264,7 +280,7 @@ function renderLogin() {
     <div class="gate">
       <div class="badge">にこぽけ</div>
       <h1>今日の一枚を、<br />みんなで。</h1>
-      <p>お題をひとつ選んで、写真を送ります。家族は写真を見ておしゃべりします。</p>
+      <p>お題をひとつ選んで、写真を送ります。家族は写真を見てお題を当て、おしゃべりします。</p>
       ${err ? `<p class="gate-err">${escapeHtml(err)}</p>` : ""}
       ${warn ? `<p class="gate-warn">${escapeHtml(warn)}</p>` : ""}
       ${
@@ -286,12 +302,17 @@ function renderLogin() {
           : ""
       }
       <div class="gate-card">
+        <p class="kicker">保存されるもの</p>
+        ${privacyListHtml()}
+      </div>
+      <div class="gate-card">
         <p class="kicker">グループをつくる</p>
         <form data-start>
           <label>グループ名
             <input class="pill" name="group" maxlength="20" required placeholder="例）たなか家" />
           </label>
           ${personFields("start")}
+          ${agreeFieldHtml()}
           <button class="primary" type="submit">つくる</button>
         </form>
       </div>
@@ -302,6 +323,7 @@ function renderLogin() {
             <input class="pill code-in" name="code" maxlength="8" required placeholder="6文字" autocomplete="off" />
           </label>
           ${personFields("join")}
+          ${agreeFieldHtml()}
           <button class="ghost" type="submit">参加する</button>
         </form>
       </div>
@@ -427,7 +449,7 @@ function renderToday() {
       ${
         posted
           ? ""
-          : `<p class="help">3つのうち1つを選んで写真を送ってください。家族には答えの文字は見えません。</p>`
+          : `<p class="help">3つのうち1つを選んで写真を送ってください。家族には答えの文字は見えません。家族は写真を見てお題を当てます。答えは、自分で見せることもできます。</p>`
       }
       ${editor}
       ${stage}
@@ -465,6 +487,53 @@ function renderToday() {
   });
 }
 
+function guessUi(quest, viewerId) {
+  if (!isPosted(quest)) return "";
+  const mine = quest.userId === viewerId;
+  const canSee = canSeeTheme(quest, viewerId);
+  const all = guessesFor(quest.id);
+  const list = all.length
+    ? `<ul class="guess-list">${all
+        .map((g) => {
+          const gu = userById(g.userId);
+          const name = escapeHtml(gu?.shortName || "");
+          if (g.correct) {
+            return `<li class="hit"><b>${name}</b>⭕ 正解！${canSee ? `「${escapeHtml(g.text)}」` : ""}</li>`;
+          }
+          return `<li><b>${name}</b>❌「${escapeHtml(g.text)}」</li>`;
+        })
+        .join("")}</ul>`
+    : "";
+
+  if (mine) {
+    return `<div class="guess-box">
+        <p class="check-lab">みんなの予想</p>
+        ${list || `<p class="help">まだだれも予想していません。</p>`}
+      </div>`;
+  }
+
+  const right = guessedRight(quest.id, viewerId);
+  let form = "";
+  if (right) {
+    form = `<p class="guess-note ok">当たりました！答えは「${escapeHtml(quest.theme)}」です。</p>`;
+  } else if (quest.revealed) {
+    form = `<p class="guess-note">${escapeHtml(userById(quest.userId)?.shortName || "")}さんが答えを見せてくれました。</p>`;
+  } else {
+    form = `<form class="composer" data-guess="${quest.id}">
+        <div class="actions">
+          <input class="pill" name="guess" maxlength="30" placeholder="お題はなんだと思う？" autocomplete="off" />
+          <button class="pill-btn" type="submit">当てる</button>
+        </div>
+      </form>
+      <p class="help guess-help">だいたい合っていれば正解です。何回でも当てられます。</p>`;
+  }
+  return `<div class="guess-box">
+      <p class="check-lab">お題あて</p>
+      ${form}
+      ${list}
+    </div>`;
+}
+
 function postCard(quest, viewerId) {
   const who = userById(quest.userId);
   const mine = quest.userId === viewerId;
@@ -489,7 +558,7 @@ function postCard(quest, viewerId) {
 
   const media = posted
     ? `<img src="${quest.photoDataUrl}" alt="" />
-       ${mine ? `<div class="tag">答え：${escapeHtml(quest.theme)}</div>` : ""}
+       ${canSeeTheme(quest, viewerId) ? `<div class="tag">答え：${escapeHtml(quest.theme)}</div>` : ""}
        ${peek}`
     : `<div class="locked"><div><span>🔒</span><em>waiting</em></div></div>`;
 
@@ -501,7 +570,7 @@ function postCard(quest, viewerId) {
     posted && quest.caption
       ? `<p class="caption-line">「${escapeHtml(quest.caption)}」</p>`
       : posted && !mine
-        ? `<p class="help">写真を見て、おしゃべりしてみましょう。</p>`
+        ? `<p class="help">写真を見て、お題を当ててみましょう。</p>`
         : "";
 
   const talkUi = posted
@@ -544,18 +613,42 @@ function postCard(quest, viewerId) {
       <div class="frame">${media}</div>
       ${waitCopy}
       ${captionLine}
+      ${guessUi(quest, viewerId)}
       ${
         posted
           ? `<div class="react">
                <button type="button" class="like-btn ${liked ? "on" : ""}" data-like="${quest.id}" ${
                  mine ? "disabled" : ""
                }>${liked ? "❤️" : "♡"} いいね ${likes}</button>
-             </div>`
+             </div>
+             ${
+               mine
+                 ? `<div class="owner-actions">
+                      ${
+                        quest.revealed
+                          ? `<span class="react-n">答えを家族に見せています</span>`
+                          : `<button type="button" class="like-btn" data-reveal="${quest.id}">答えを家族に見せる</button>`
+                      }
+                      <button type="button" class="like-btn danger" data-delete-post="${quest.id}">この写真を消す</button>
+                    </div>`
+                 : ""
+             }`
           : ""
       }
       ${talkUi}
     </article>
   `;
+}
+
+function bindDeletePost(root) {
+  root.querySelectorAll("[data-delete-post]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const ok = window.confirm(
+        "この写真を消しますか？家族のスマホと共有サーバーからも消えます。その日の連続記録も消えます。"
+      );
+      if (ok) deletePost(btn.dataset.deletePost);
+    });
+  });
 }
 
 function bindFeedActions() {
@@ -568,6 +661,16 @@ function bindFeedActions() {
   app.querySelectorAll("[data-like]").forEach((btn) => {
     btn.addEventListener("click", () => toggleLike(btn.dataset.like));
   });
+  app.querySelectorAll("[data-guess]").forEach((form) => {
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      submitGuess(form.dataset.guess, new FormData(form).get("guess"));
+    });
+  });
+  app.querySelectorAll("[data-reveal]").forEach((btn) => {
+    btn.addEventListener("click", () => revealTheme(btn.dataset.reveal));
+  });
+  bindDeletePost(app);
   app.querySelectorAll("[data-toggle-comments]").forEach((btn) => {
     btn.addEventListener("click", () => {
       window.__openComments = window.__openComments || {};
@@ -618,7 +721,7 @@ function renderFeed() {
   const viewDate = postedDates[window.__feedDateIndex] || today;
   const isLatest = viewDate === postedDates[0];
   const isOldest = window.__feedDateIndex >= postedDates.length - 1;
-  const quests = all.filter((q) => q.date === viewDate);
+  const quests = all.filter((q) => q.date === viewDate && (q.date === today || isPosted(q)));
   const others = quests.filter((q) => q.userId !== user.id);
   const mine = quests.find((q) => q.userId === user.id);
   const board = viewDate === today ? todayBoard(group.id) : [];
@@ -735,6 +838,7 @@ function renderMe() {
       <form data-add>
         <p class="kicker">この端末にメンバーを追加</p>
         ${personFields("add")}
+        ${agreeFieldHtml()}
         <button class="pill-btn" type="submit">追加する</button>
       </form>
       <p class="kicker">家族から見える記録</p>
@@ -757,12 +861,17 @@ function renderMe() {
             .map(
               (q) => `<div class="cell"><img src="${q.photoDataUrl}" alt="" /><p>${escapeHtml(
                 q.categoryEmoji || ""
-              )} ${escapeHtml(q.theme)}<br /><span class="text">${formatDateLabel(q.date)}</span></p></div>`
+              )} ${escapeHtml(q.theme)}<br /><span class="text">${formatDateLabel(q.date)}</span></p>
+              <button type="button" class="cell-del" data-delete-post="${q.id}">消す</button></div>`
             )
             .join("") || "<p class='text'>まだ写真がありません。</p>"
         }
       </div>
+      <p class="kicker" style="margin-top:18px">保存されるもの</p>
+      ${privacyListHtml()}
       <button class="ghost" type="button" data-logout>ログアウト</button>
+      <button class="ghost danger" type="button" data-leave>グループから退出する</button>
+      <p class="help">退出すると、あなたの写真はすべて消え、この端末からもログインできなくなります。</p>
     `,
     "me"
   );
@@ -770,6 +879,23 @@ function renderMe() {
   app.querySelector("[data-logout]")?.addEventListener("click", () => {
     window.__photoPreview = "";
     logout();
+    go("/login");
+  });
+  bindDeletePost(app);
+  app.querySelector("[data-leave]")?.addEventListener("click", async (e) => {
+    const ok = window.confirm(
+      "グループから退出しますか？あなたの写真はすべて消え、元に戻せません。"
+    );
+    if (!ok) return;
+    e.target.disabled = true;
+    e.target.textContent = "退出しています…";
+    const result = await leaveGroup();
+    if (!result.ok) {
+      window.alert(result.error);
+      render();
+      return;
+    }
+    window.__photoPreview = "";
     go("/login");
   });
   app.querySelector("[data-copy-code]")?.addEventListener("click", async () => {
@@ -856,7 +982,7 @@ function tutorialSlides() {
       img: "img/brain-intro-memory.png",
       alt: "家族の写真カードのイラスト",
       title: "今日の一枚を送る",
-      text: "下の「今日」から写真を送ります。家族の投稿は「家族」で見られます。",
+      text: "下の「今日」から写真を送ります。家族の投稿は「家族」で見て、お題を当てられます。",
     },
     {
       img: "img/brain-intro-order.png",
