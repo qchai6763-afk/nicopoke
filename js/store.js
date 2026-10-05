@@ -332,28 +332,49 @@ function upsertById(list, item) {
   else list[i] = item;
 }
 
+function stamp(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function photoIsLive(quest, deletedAt) {
+  if (!quest || !quest.photoDataUrl) return false;
+  return stamp(quest.postedAt) > stamp(deletedAt);
+}
+
 function pickQuest(local, incoming) {
-  const localPosted = Boolean(local.photoDataUrl);
-  const incomingPosted = Boolean(incoming.photoDataUrl);
-  if (incomingPosted && !localPosted) return incoming;
-  if (localPosted && !incomingPosted) {
+  const deletedAt = Math.max(stamp(local.deletedAt), stamp(incoming.deletedAt));
+  const localLive = photoIsLive(local, deletedAt);
+  const incomingLive = photoIsLive(incoming, deletedAt);
+  if (incomingLive && !localLive) return incoming;
+  if (localLive && !incomingLive) {
     return Object.assign({}, incoming, {
       photoDataUrl: local.photoDataUrl,
       caption: incoming.caption || local.caption,
-      postedAt: incoming.postedAt || local.postedAt,
+      postedAt: stamp(local.postedAt) || stamp(incoming.postedAt),
     });
   }
-  if ((incoming.postedAt || 0) > (local.postedAt || 0)) return incoming;
+  if (!localLive && !incomingLive && deletedAt) {
+    const base = stamp(incoming.postedAt) > stamp(local.postedAt) ? incoming : local;
+    return Object.assign({}, base, {
+      photoDataUrl: "",
+      caption: "",
+      postedAt: null,
+      hasPhoto: false,
+      deletedAt,
+    });
+  }
+  if (stamp(incoming.postedAt) > stamp(local.postedAt)) return incoming;
   return local;
 }
 
 function settleQuest(quest, a, b) {
   const out = Object.assign({}, quest);
-  const deletedAt = Math.max(a.deletedAt || 0, b.deletedAt || 0);
-  const revealedAt = Math.max(a.revealedAt || 0, b.revealedAt || 0);
+  const deletedAt = Math.max(stamp(a.deletedAt), stamp(b.deletedAt));
+  const revealedAt = Math.max(stamp(a.revealedAt), stamp(b.revealedAt));
   if (deletedAt) {
     out.deletedAt = deletedAt;
-    if ((out.postedAt || 0) <= deletedAt) {
+    if (stamp(out.postedAt) <= deletedAt) {
       out.photoDataUrl = "";
       out.caption = "";
       out.postedAt = null;
@@ -361,7 +382,7 @@ function settleQuest(quest, a, b) {
     }
   }
   if (revealedAt) out.revealedAt = revealedAt;
-  out.revealed = Boolean(out.postedAt && revealedAt >= out.postedAt);
+  out.revealed = Boolean(out.postedAt && revealedAt >= stamp(out.postedAt));
   return out;
 }
 
@@ -439,7 +460,7 @@ function toLightSnapshot(snap) {
     quests: (snap.quests || []).map((q) =>
       Object.assign({}, q, {
         photoDataUrl: "",
-        hasPhoto: Boolean(q.photoDataUrl),
+        hasPhoto: Boolean(q.photoDataUrl) && stamp(q.postedAt) > stamp(q.deletedAt),
       })
     ),
     guesses: snap.guesses || [],
@@ -956,19 +977,28 @@ function revealTheme(questId) {
 }
 
 function clearPost(quest, now) {
-  quest.deletedAt = Math.max(now, (quest.postedAt || 0) + 1);
+  quest.deletedAt = Math.max(now, stamp(quest.postedAt) + 1, stamp(quest.deletedAt));
   quest.photoDataUrl = "";
   quest.caption = "";
   quest.postedAt = null;
+  quest.hasPhoto = false;
   quest.revealed = false;
 }
 
 function deletePost(questId) {
   const user = currentUser();
   const quest = getQuest(questId);
-  if (!user || !quest || quest.userId !== user.id || !isPosted(quest)) return;
+  if (!user || !quest || quest.userId !== user.id) return;
   clearPost(quest, Date.now());
-  notify();
+  persist();
+  window.dispatchEvent(new Event("hidamari-change"));
+  const group = currentGroup();
+  if (group) {
+    window.clearTimeout(cloudTimer);
+    pushCloud(group.id).then((ok) => {
+      if (!ok) queueCloudSync(group.id);
+    });
+  }
 }
 
 async function leaveGroup() {

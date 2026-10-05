@@ -2712,14 +2712,22 @@ label.agree input {
   color: #c0392b;
 }
 
+.album .cell {
+  position: relative;
+  z-index: 1;
+}
+
 .album .cell-del {
   display: block;
+  position: relative;
+  z-index: 2;
   width: 100%;
   border: 0;
   border-top: 1px solid #ffd0dc;
   background: #fff;
   color: #c0392b;
-  min-height: 40px;
+  min-height: 44px;
   font-weight: 700;
   cursor: pointer;
+  pointer-events: auto;
 }
