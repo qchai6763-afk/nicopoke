@@ -641,11 +641,14 @@ function postCard(quest, viewerId) {
 
 function bindDeletePost(root) {
   root.querySelectorAll("[data-delete-post]").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = btn.getAttribute("data-delete-post");
       const ok = window.confirm(
         "この写真を消しますか？家族のスマホと共有サーバーからも消えます。その日の連続記録も消えます。"
       );
-      if (ok) deletePost(btn.dataset.deletePost);
+      if (ok) deletePost(id);
     });
   });
 }

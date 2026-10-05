@@ -43,30 +43,51 @@ function upsertById(list, item, mergeFn) {
   else list[i] = mergeFn ? mergeFn(list[i], item) : item;
 }
 
+function stamp(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function photoIsLive(quest, deletedAt) {
+  if (!quest || !quest.photoDataUrl) return false;
+  return stamp(quest.postedAt) > stamp(deletedAt);
+}
+
 function pickQuest(local, incoming) {
-  const localPosted = Boolean(local.photoDataUrl);
-  const incomingPosted = Boolean(incoming.photoDataUrl);
-  if (incomingPosted && !localPosted) return incoming;
-  if (localPosted && !incomingPosted) {
+  const deletedAt = Math.max(stamp(local.deletedAt), stamp(incoming.deletedAt));
+  const localLive = photoIsLive(local, deletedAt);
+  const incomingLive = photoIsLive(incoming, deletedAt);
+  if (incomingLive && !localLive) return incoming;
+  if (localLive && !incomingLive) {
     return Object.assign({}, incoming, {
       photoDataUrl: local.photoDataUrl,
       caption: incoming.caption || local.caption,
-      postedAt: incoming.postedAt || local.postedAt,
+      postedAt: stamp(local.postedAt) || stamp(incoming.postedAt),
     });
   }
-  if ((incoming.postedAt || 0) > (local.postedAt || 0)) return incoming;
+  if (!localLive && !incomingLive && deletedAt) {
+    const base = stamp(incoming.postedAt) > stamp(local.postedAt) ? incoming : local;
+    return Object.assign({}, base, {
+      photoDataUrl: "",
+      caption: "",
+      postedAt: null,
+      hasPhoto: false,
+      deletedAt,
+    });
+  }
+  if (stamp(incoming.postedAt) > stamp(local.postedAt)) return incoming;
   return Object.assign({}, local, incoming, {
-    photoDataUrl: localPosted ? local.photoDataUrl : incoming.photoDataUrl,
+    photoDataUrl: localLive ? local.photoDataUrl : incoming.photoDataUrl,
   });
 }
 
 function settleQuest(quest, a, b) {
   const out = Object.assign({}, quest);
-  const deletedAt = Math.max(a.deletedAt || 0, b.deletedAt || 0);
-  const revealedAt = Math.max(a.revealedAt || 0, b.revealedAt || 0);
+  const deletedAt = Math.max(stamp(a.deletedAt), stamp(b.deletedAt));
+  const revealedAt = Math.max(stamp(a.revealedAt), stamp(b.revealedAt));
   if (deletedAt) {
     out.deletedAt = deletedAt;
-    if ((out.postedAt || 0) <= deletedAt) {
+    if (stamp(out.postedAt) <= deletedAt) {
       out.photoDataUrl = "";
       out.caption = "";
       out.postedAt = null;
@@ -74,7 +95,7 @@ function settleQuest(quest, a, b) {
     }
   }
   if (revealedAt) out.revealedAt = revealedAt;
-  out.revealed = Boolean(out.postedAt && revealedAt >= out.postedAt);
+  out.revealed = Boolean(out.postedAt && revealedAt >= stamp(out.postedAt));
   return out;
 }
 
@@ -234,7 +255,7 @@ async function blobRequest(api, query, token, storeId, method, body) {
           "x-add-random-suffix": "0",
           "x-allow-overwrite": "1",
           "x-content-type": "application/json",
-          "x-cache-control-max-age": "60",
+          "x-cache-control-max-age": "0",
         }
       : {}),
     body,
