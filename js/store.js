@@ -1085,6 +1085,32 @@ function guessedRight(questId, userId) {
   return myGuesses(questId, userId).some((g) => g.correct);
 }
 
+function missCountFor(questId, userId) {
+  return myGuesses(questId, userId).filter((g) => !g.correct).length;
+}
+
+function themeCatOf(theme) {
+  return SLOT_CATS.find((c) => c.items.includes(theme)) || null;
+}
+
+function autoGuessHints(quest, userId) {
+  if (!quest || !userId) return [];
+  const misses = missCountFor(quest.id, userId);
+  if (misses < 2) return [];
+  const cat = themeCatOf(quest.theme);
+  const hints = [];
+  if (cat && cat.id === "face") {
+    hints.push("顔の写真です。表情、向き、パーツのどれかに注目してみてください。");
+  } else {
+    hints.push("顔ではなく、ものや場面の写真です。何を写しているかに注目してみてください。");
+  }
+  if (misses >= 4) {
+    const extra = THEME_HINTS[quest.theme];
+    if (extra) hints.push(extra);
+  }
+  return hints;
+}
+
 function submitGuess(questId, text) {
   const user = currentUser();
   const quest = getQuest(questId);
