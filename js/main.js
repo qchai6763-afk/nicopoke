@@ -516,6 +516,12 @@ function guessUi(quest, viewerId) {
   }
 
   const right = guessedRight(quest.id, viewerId);
+  const hints = right ? [] : autoGuessHints(quest, viewerId);
+  const hintHtml = hints.length
+    ? `<div class="guess-hint">${hints
+        .map((h) => `<p>ヒント：${escapeHtml(h)}</p>`)
+        .join("")}</div>`
+    : "";
   let form = "";
   if (right) {
     form = `<p class="guess-note ok">当たりました！</p>
@@ -524,13 +530,14 @@ function guessUi(quest, viewerId) {
     form = `<p class="guess-note">${escapeHtml(userById(quest.userId)?.shortName || "")}さんが答えを見せてくれました。</p>
       <p class="guess-answer">答え：${escapeHtml(quest.theme)}</p>`;
   } else {
-    form = `<form class="composer" data-guess="${quest.id}">
+    form = `${hintHtml}
+      <form class="composer" data-guess="${quest.id}">
         <div class="actions">
           <input class="pill" name="guess" maxlength="30" placeholder="お題はなんだと思う？" autocomplete="off" />
           <button class="pill-btn" type="submit">当てる</button>
         </div>
       </form>
-      <p class="help guess-help">だいたい合っていれば正解です。何回でも当てられます。</p>`;
+      <p class="help guess-help">だいたい合っていれば正解です。2回外すとヒントが出ます。何回でも当てられます。</p>`;
   }
   return `<div class="guess-box">
       <p class="check-lab">お題あて</p>
