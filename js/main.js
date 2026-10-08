@@ -252,7 +252,7 @@ function personFields(prefix, defaults = {}) {
 function privacyListHtml() {
   return `
     <ul class="privacy-list">
-      <li>写真・一言コメント・名前・いいね・返事ボタン・コメントは、グループの共有サーバーに保存されます。参加コードを知っている人は、これらを見られます。</li>
+      <li>写真・一言コメント・名前・いいね・返事ボタン・お題との関係投票・コメントは、グループの共有サーバーに保存されます。参加コードを知っている人は、これらを見られます。</li>
       <li>脳トレの記録と元気予報の結果は、このスマホの中だけに残ります。家族には送られません。</li>
       <li>写真に自分以外の人が写るときは、送る前にその人に聞いてください。</li>
       <li>送った写真は、日がたってもアルバムに残り、「思い出神経衰弱」のカードとしてグループのみんなに表示されます。</li>
@@ -282,7 +282,7 @@ function renderLogin() {
     <div class="gate">
       <div class="badge">にこぽけ</div>
       <h1>今日の一枚を、<br />みんなで。</h1>
-      <p>その日みんな同じお題で写真を送ります。家族は写真を見て、おしゃべりします。</p>
+      <p>その日、人ごとに別のお題で写真を送ります。家族は写真を見て、おしゃべりします。</p>
       ${err ? `<p class="gate-err">${escapeHtml(err)}</p>` : ""}
       ${warn ? `<p class="gate-warn">${escapeHtml(warn)}</p>` : ""}
       ${
@@ -396,7 +396,7 @@ function renderToday() {
     : "";
 
   const editor = `<div class="day-theme">
-         <p class="kicker">今日みんなのお題</p>
+         <p class="kicker">${quest.bonus ? "一位から、もう一枚" : "あなたの今日のお題"}</p>
          <p class="day-theme-text">${escapeHtml(quest.categoryEmoji || "")} ${escapeHtml(quest.theme)}</p>
        </div>`;
 
@@ -439,7 +439,7 @@ function renderToday() {
       ${
         posted
           ? ""
-          : `<p class="help">今日はグループみんな、同じお題で一枚送ります。写真の違いを見ておしゃべりしてください。</p>`
+          : `<p class="help">今日のお題は、あなただけのもの。ほかの人とは違います。</p>`
       }
       ${editor}
       ${stage}
@@ -489,7 +489,7 @@ function postCard(quest, viewerId) {
 
   const media = posted
     ? `<img src="${quest.photoDataUrl}" alt="" />
-       <div class="tag">お題：${escapeHtml(quest.theme)}</div>`
+       ${mine || quest.revealed || guessedRight(quest.id, viewerId) ? `<div class="tag">お題：${escapeHtml(quest.theme)}</div>` : ""}
     : `<div class="locked"><div><span>🔒</span><em>waiting</em></div></div>`;
 
   const waitCopy = !posted
@@ -539,6 +539,66 @@ function postCard(quest, viewerId) {
        </div>`
     : "";
 
+  const choiceLeft = !mine && posted && !quest.revealed && !guessedRight(quest.id, viewerId) ? remainingChoices(quest, viewerId) : [];
+  const choiceUi =
+    !mine && posted && guessedRight(quest.id, viewerId)
+      ? `<p class="guess-note ok">当たった。お題は「${escapeHtml(quest.theme)}」</p>`
+      : choiceLeft.length
+        ? `<div class="choice-box">
+             <p class="kicker">この写真のお題は？</p>
+             <div class="choice-grid">
+               ${choiceLeft
+                 .map(
+                   (t) =>
+                     `<button type="button" class="choice-btn" data-choice-guess="${quest.id}" data-choice-text="${escapeHtml(
+                       t
+                     )}">${escapeHtml(t)}</button>`
+                 )
+                 .join("")}
+             </div>
+             <p class="help">外すと、この写真の人が順位で有利になる。外したボタンは消える。</p>
+           </div>`
+        : "";
+  const groupNow = currentGroup();
+  const leaderNow = groupNow && quest.date === todayKey() ? dayRank(groupNow.id, quest.date).leader : null;
+  const alreadyGranted = groupNow ? grantedExtraToday(groupNow.id, viewerId) : null;
+  const grantUi =
+    posted && leaderNow && leaderNow.userId === viewerId && !mine && quest.date === todayKey()
+      ? alreadyGranted
+        ? `<p class="help">もう一枚は、${escapeHtml(userById(alreadyGranted.toUserId)?.shortName || "")}さんに送った。</p>`
+        : `<button type="button" class="talk-btn" data-grant-extra="${quest.userId}">もう一枚送っていい</button>`
+      : "";
+  const fitVotes = fitVotesFor(quest.id);
+  const yesVotes = fitVotes.filter((v) => v.choice === "yes");
+  const noVotes = fitVotes.filter((v) => v.choice === "no");
+  const myFit = fitVotes.find((v) => v.userId === viewerId);
+  const fitNames = (list) =>
+    list
+      .map((v) => userById(v.userId)?.shortName)
+      .filter(Boolean)
+      .join("・");
+  const fitCheck = posted
+    ? quest.revealed
+      ? `<div class="fit-check">
+           <p class="kicker">答えと写真、関係ある？</p>
+           <p class="fit-answer">答え：${escapeHtml(quest.theme)}</p>
+           <div class="talk-btns fit-btns">
+             <button type="button" class="talk-btn ${myFit && myFit.choice === "yes" ? "on" : ""}" data-fit-vote="${quest.id}" data-fit-choice="yes" ${mine ? "disabled" : ""}>関係ある</button>
+             <button type="button" class="talk-btn no ${myFit && myFit.choice === "no" ? "on" : ""}" data-fit-vote="${quest.id}" data-fit-choice="no" ${mine ? "disabled" : ""}>関係ない</button>
+           </div>
+           <p class="talk-sum">${yesVotes.length ? `${escapeHtml(fitNames(yesVotes))}が関係ある` : "関係ある　まだなし"}　${noVotes.length ? `${escapeHtml(fitNames(noVotes))}が関係ない` : "関係ない　まだなし"}</p>
+           ${
+             noVotes.length > yesVotes.length
+               ? `<p class="fit-warn">関係ない、という票のほうが多いです。</p>`
+               : `<p class="help">${mine ? "自分の写真には投票できません。" : "システムが出したお題と、この写真が合っているかを押してください。"}</p>`
+           }
+         </div>`
+      : `<div class="fit-check">
+           <button type="button" class="talk-btn" data-reveal="${quest.id}">答えを発表する</button>
+           <p class="help">発表すると、お題と写真が関係あるかをみんなで投票できます。お題は、送った人が書いたものではなく、システムが決めたものです。</p>
+         </div>`
+    : "";
+
   const talkUi = posted
     ? `<div class="talk">
          <p class="kicker">おしゃべり</p>
@@ -584,6 +644,9 @@ function postCard(quest, viewerId) {
       <div class="frame">${media}</div>
       ${waitCopy}
       ${captionLine}
+      ${choiceUi}
+      ${grantUi}
+      ${fitCheck}
       ${talkAsk}
       ${
         posted
@@ -632,6 +695,22 @@ function bindFeedActions() {
   });
   app.querySelectorAll("[data-talk-react]").forEach((btn) => {
     btn.addEventListener("click", () => setTalkReact(btn.dataset.talkReact, btn.dataset.talkChoice));
+  });
+  app.querySelectorAll("[data-reveal]").forEach((btn) => {
+    btn.addEventListener("click", () => revealTheme(btn.dataset.reveal));
+  });
+  app.querySelectorAll("[data-fit-vote]").forEach((btn) => {
+    btn.addEventListener("click", () => setFitVote(btn.dataset.fitVote, btn.dataset.fitChoice));
+  });
+  app.querySelectorAll("[data-choice-guess]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const guess = submitChoiceGuess(btn.dataset.choiceGuess, btn.dataset.choiceText);
+      if (!guess) return;
+      playResultTone(guess.correct);
+    });
+  });
+  app.querySelectorAll("[data-grant-extra]").forEach((btn) => {
+    btn.addEventListener("click", () => grantExtraPhoto(btn.dataset.grantExtra));
   });
   bindDeletePost(app);
   app.querySelectorAll("[data-toggle-comments]").forEach((btn) => {
@@ -685,8 +764,16 @@ function renderFeed() {
   const isLatest = viewDate === postedDates[0];
   const isOldest = window.__feedDateIndex >= postedDates.length - 1;
   const quests = all.filter((q) => q.date === viewDate && (q.date === today || isPosted(q)));
-  const others = quests.filter((q) => q.userId !== user.id);
-  const mine = quests.find((q) => q.userId === user.id);
+  const rank = viewDate === today ? dayRank(group.id, viewDate) : { rows: [], leader: null };
+  const leaderId = rank.leader ? rank.leader.userId : "";
+  const ordered = quests
+    .filter((q) => q.userId !== user.id || isPosted(q))
+    .slice()
+    .sort((a, b) => {
+      if (a.userId === leaderId && b.userId !== leaderId) return -1;
+      if (b.userId === leaderId && a.userId !== leaderId) return 1;
+      return (b.postedAt || 0) - (a.postedAt || 0);
+    });
   const board = viewDate === today ? todayBoard(group.id) : [];
   const top = board[0];
   const fun = board.flatMap((b) => b.comments.map((c) => ({ ...c, owner: b.user }))).sort((a, b) => b.at - a.at)[0];
@@ -702,23 +789,32 @@ function renderFeed() {
         <button type="button" class="time-btn" data-feed-newer ${isLatest ? "disabled" : ""}>最新へ →</button>
       </div>
       ${viewDate === today ? statusRow(group, user.id) : ""}
-      ${(() => {
-        const postedThemes = quests.filter((q) => isPosted(q)).map((q) => q.theme);
-        const unique = [...new Set(postedThemes)];
-        const label =
-          unique.length === 1
-            ? unique[0]
-            : viewDate === today
-              ? groupThemeSlot(group.id, viewDate).theme
-              : "";
-        if (!label) return "";
-        const ask = talkPromptFor({ theme: label, category: catForTheme(label).id });
-        return `<div class="day-theme">
-          <p class="kicker">${viewDate === today ? "今日みんなのお題" : "この日のお題"}</p>
-          <p class="day-theme-text">${escapeHtml(label)}</p>
-          <p class="day-theme-ask">みんなに聞くこと　${escapeHtml(ask.q)}</p>
-        </div>`;
-      })()}
+      ${
+        viewDate === today
+          ? `<div class="day-theme">
+               <p class="kicker">今日の順位</p>
+               <p class="day-theme-text">${
+                 rank.leader
+                   ? `1位　${escapeHtml(rank.leader.user.name)}　外された ${rank.leader.misses}回`
+                   : "まだだれも外していません"
+               }</p>
+               ${
+                 rank.rows.length
+                   ? `<ol class="rank-list">${rank.rows
+                       .map(
+                         (row, i) =>
+                           `<li><b>${i + 1}</b> ${escapeHtml(row.user.shortName)}　外された ${row.misses}　通算 ${winCount(
+                             group.id,
+                             row.userId
+                           )}回</li>`
+                       )
+                       .join("")}</ol>`
+                   : ""
+               }
+               <p class="help">外された回数が多い人ほど上。同じ回数なら、その日の運で並ぶ。一位の写真が一番上に出る。</p>
+             </div>`
+          : ""
+      }
       ${
         top
           ? `<div class="board">
@@ -737,9 +833,10 @@ function renderFeed() {
           : ""
       }
       ${
-        others.length || mine
-          ? `${others.map((q) => postCard(q, user.id)).join("")}
-             ${mine ? `<p class="kicker">あなたの写真</p>${postCard(mine, user.id)}` : ""}`
+        ordered.length
+          ? ordered
+              .map((q) => `${q.userId === user.id ? `<p class="kicker">あなたの写真</p>` : ""}${postCard(q, user.id)}`)
+              .join("")
           : `<p class="help">この日の写真はまだありません。矢印で日付を変えてください。</p>`
       }
     `,
@@ -756,6 +853,7 @@ function renderFeed() {
     render();
   });
   bindFeedActions();
+  if (viewDate === today) noteCrown(rank.leader ? rank.leader.userId : "");
 }
 
 function renderMe() {
@@ -962,7 +1060,7 @@ function tutorialSlides() {
       img: "img/brain-intro-memory.png",
       alt: "家族の写真カードのイラスト",
       title: "今日の一枚を送る",
-      text: "下の「今日」から、みんな同じお題で写真を送ります。家族の写真の下の大きいボタンを押すと、気持ちが届きます。",
+      text: "下の「今日」から、自分だけの今日のお題で写真を送ります。家族の写真の下の大きいボタンを押すと、気持ちが届きます。",
     },
     {
       img: "img/brain-intro-order.png",
@@ -1045,6 +1143,105 @@ window.addEventListener("hidamari-change", () => {
   render();
   paintTutorial();
 });
+
+let tapAudio = null;
+function playTap() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    if (!tapAudio) tapAudio = new AC();
+    if (tapAudio.state === "suspended") tapAudio.resume();
+    const now = tapAudio.currentTime;
+    const o = tapAudio.createOscillator();
+    const g = tapAudio.createGain();
+    o.type = "square";
+    o.frequency.setValueAtTime(620, now);
+    o.frequency.exponentialRampToValueAtTime(1240, now + 0.045);
+    g.gain.setValueAtTime(0.16, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+    o.connect(g);
+    g.connect(tapAudio.destination);
+    o.start(now);
+    o.stop(now + 0.1);
+  } catch {
+    /* ignore */
+  }
+}
+
+function playResultTone(ok) {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    if (!tapAudio) tapAudio = new AC();
+    if (tapAudio.state === "suspended") tapAudio.resume();
+    const now = tapAudio.currentTime;
+    const beep = (freq, t, len) => {
+      const o = tapAudio.createOscillator();
+      const g = tapAudio.createGain();
+      o.type = "square";
+      o.frequency.value = freq;
+      g.gain.setValueAtTime(0.12, now + t);
+      g.gain.exponentialRampToValueAtTime(0.001, now + t + len);
+      o.connect(g);
+      g.connect(tapAudio.destination);
+      o.start(now + t);
+      o.stop(now + t + len);
+    };
+    if (ok) {
+      beep(880, 0, 0.12);
+      beep(1174, 0.14, 0.16);
+    } else {
+      beep(196, 0, 0.18);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function playFanfare() {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    if (!tapAudio) tapAudio = new AC();
+    if (tapAudio.state === "suspended") tapAudio.resume();
+    const now = tapAudio.currentTime;
+    [523, 659, 784, 1046].forEach((freq, i) => {
+      const o = tapAudio.createOscillator();
+      const g = tapAudio.createGain();
+      o.type = "square";
+      o.frequency.value = freq;
+      const t = now + i * 0.12;
+      g.gain.setValueAtTime(0.14, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+      o.connect(g);
+      g.connect(tapAudio.destination);
+      o.start(t);
+      o.stop(t + 0.2);
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
+function noteCrown(userId) {
+  const next = userId || "";
+  if (window.__heardCrown == null) {
+    window.__heardCrown = next;
+    return;
+  }
+  if (next && next !== window.__heardCrown) playFanfare();
+  window.__heardCrown = next;
+}
+
+document.addEventListener(
+  "pointerdown",
+  (e) => {
+    const el = e.target.closest("button, a, [data-key]");
+    if (!el || el.matches(":disabled") || el.getAttribute("aria-disabled") === "true") return;
+    playTap();
+  },
+  true
+);
 
 boot();
 refreshFromCloud().then((changed) => {
