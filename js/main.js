@@ -489,7 +489,7 @@ function postCard(quest, viewerId) {
 
   const media = posted
     ? `<img src="${quest.photoDataUrl}" alt="" />
-       ${mine || quest.revealed || guessedRight(quest.id, viewerId) ? `<div class="tag">お題：${escapeHtml(quest.theme)}</div>` : ""}
+       ${(mine || quest.revealed || guessedRight(quest.id, viewerId)) ? '<div class="tag">お題：' + escapeHtml(quest.theme) + '</div>' : ""}`
     : `<div class="locked"><div><span>🔒</span><em>waiting</em></div></div>`;
 
   const waitCopy = !posted
