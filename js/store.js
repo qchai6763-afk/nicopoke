@@ -147,6 +147,7 @@ function emptyState() {
     fitVotes: [],
     extraGrants: [],
     rankWins: [],
+    asks: [],
     messages: [],
   };
 }
@@ -172,6 +173,7 @@ function load() {
     if (!Array.isArray(parsed.fitVotes)) parsed.fitVotes = [];
     if (!Array.isArray(parsed.extraGrants)) parsed.extraGrants = [];
     if (!Array.isArray(parsed.rankWins)) parsed.rankWins = [];
+    if (!Array.isArray(parsed.asks)) parsed.asks = [];
     parsed.users.forEach((u) => {
       delete u.generation;
       delete u.role;
@@ -383,6 +385,7 @@ function snapshotForGroup(groupId) {
     fitVotes: (state.fitVotes || []).filter((v) => questIds.has(v.questId)),
     extraGrants: (state.extraGrants || []).filter((g) => g.groupId === groupId),
     rankWins: (state.rankWins || []).filter((w) => w.groupId === groupId),
+    asks: (state.asks || []).filter((a) => questIds.has(a.questId)),
   };
 }
 
@@ -533,6 +536,8 @@ function mergeSnapshot(snap) {
   (snap.extraGrants || []).forEach((g) => upsertById(state.extraGrants, g));
   if (!state.rankWins) state.rankWins = [];
   (snap.rankWins || []).forEach((w) => upsertById(state.rankWins, w));
+  if (!state.asks) state.asks = [];
+  (snap.asks || []).forEach((a) => upsertById(state.asks, a));
   const after = JSON.stringify(snapshotForGroup(incoming.id) || {});
   return before !== after;
 }
@@ -556,6 +561,7 @@ function toLightSnapshot(snap) {
     fitVotes: snap.fitVotes || [],
     extraGrants: snap.extraGrants || [],
     rankWins: snap.rankWins || [],
+    asks: snap.asks || [],
   };
 }
 
@@ -1081,6 +1087,46 @@ function submitChoiceGuess(questId, text) {
   return guess;
 }
 
+function asksFor(questId, userId) {
+  const quest = getQuest(questId);
+  const since = (quest && quest.postedAt) || 0;
+  return (state.asks || []).filter(
+    (a) => a && a.questId === questId && a.userId === userId && stamp(a.at) >= since
+  );
+}
+
+function questionById(id) {
+  return (ASK_QUESTIONS || []).find((q) => q.id === id) || null;
+}
+
+function questionSaysYes(questionId, theme) {
+  const q = questionById(questionId);
+  return Boolean(q && (q.yes || []).indexOf(theme) >= 0);
+}
+
+function askQuestion(questId, questionId) {
+  const user = currentUser();
+  const quest = getQuest(questId);
+  if (!user || !quest || !isPosted(quest) || quest.userId === user.id) return null;
+  if (guessedRight(questId, user.id)) return null;
+  if (!questionById(questionId)) return null;
+  const asked = asksFor(questId, user.id);
+  if (asked.length >= missCountFor(questId, user.id)) return null;
+  if (asked.some((a) => a.questionId === questionId)) return null;
+  const row = {
+    id: makeId("ask"),
+    questId,
+    userId: user.id,
+    questionId,
+    answer: questionSaysYes(questionId, quest.theme),
+    at: Date.now(),
+  };
+  if (!state.asks) state.asks = [];
+  state.asks.push(row);
+  notify();
+  return row;
+}
+
 function ownerMissCount(userId, groupId, date) {
   return state.quests
     .filter((q) => q.groupId === groupId && q.userId === userId && q.date === date && isPosted(q))
@@ -1468,6 +1514,9 @@ function setTalkReact(questId, choiceId) {
   } else if (i >= 0) {
     state.talkReacts[i].choice = choiceId;
     state.talkReacts[i].at = Date.now();
+    state.talkReacts[i].reply = "";
+    state.talkReacts[i].replyAt = 0;
+    state.talkReacts[i].follow = "";
   } else {
     state.talkReacts.push({
       id: makeId("talk"),
@@ -1477,6 +1526,117 @@ function setTalkReact(questId, choiceId) {
       at: Date.now(),
     });
   }
+  notify();
+}
+
+function talkButtonLabel(set, choiceId) {
+  const hit = (set && set.buttons ? set.buttons : []).find((b) => b.id === choiceId);
+  return hit ? hit.label : "";
+}
+
+function talkReplyFor(choiceId, quest) {
+  if (choiceId === "ask") {
+    return (
+      THEME_ASK_REPLIES[quest && quest.theme] || {
+        q: "なにを教える？",
+        buttons: [
+          { id: "place", label: "場所や" },
+          { id: "who", label: "だれかや" },
+          { id: "secret", label: "まだひみつ" },
+        ],
+      }
+    );
+  }
+  return TALK_REPLIES[choiceId] || TALK_REPLIES.fun;
+}
+
+function talkFollowFor(replyId) {
+  if (replyId === "more") {
+    return {
+      q: "もう一枚、どうする？",
+      buttons: [
+        { id: "wait", label: "待つ" },
+        { id: "fast", label: "はやく" },
+        { id: "see", label: "見たい" },
+      ],
+    };
+  }
+  if (replyId === "secret" || replyId === "nope") {
+    return {
+      q: "それでも？",
+      buttons: [
+        { id: "curious", label: "気になる" },
+        { id: "ok", label: "いいよ" },
+        { id: "later", label: "あとで聞く" },
+      ],
+    };
+  }
+  if (["lemon", "ume", "tea", "coffee", "food", "drink", "hot", "ice", "sweet"].indexOf(replyId) >= 0) {
+    return {
+      q: "それになんて返す？",
+      buttons: [
+        { id: "yum", label: "おいしそう" },
+        { id: "share", label: "わけて" },
+        { id: "sly", label: "ずるい" },
+      ],
+    };
+  }
+  return TALK_FOLLOWS;
+}
+
+function ensureBonusQuest(groupId, userId) {
+  const date = todayKey();
+  const questId = `q-${userId}-${date}-b`;
+  if (state.quests.some((q) => q.id === questId)) return;
+  const taken = new Set(
+    state.quests.filter((q) => q.groupId === groupId && q.date === date).map((q) => q.theme)
+  );
+  const theme = themesForMembers([userId], `${date}:talk-bonus`, taken)[userId];
+  state.quests.push(
+    Object.assign(
+      {
+        id: questId,
+        groupId,
+        userId,
+        date,
+        bonus: true,
+        themeAt: Date.now(),
+        rerollsUsed: 0,
+        photoDataUrl: "",
+        caption: "",
+        revealed: false,
+        postedAt: null,
+      },
+      themeFields(theme)
+    )
+  );
+}
+
+function setTalkReply(questId, toUserId, choiceId) {
+  const user = currentUser();
+  const quest = getQuest(questId);
+  if (!user || !quest || quest.userId !== user.id || !toUserId) return;
+  const react = (state.talkReacts || []).find((r) => r.questId === questId && r.userId === toUserId);
+  if (!react) return;
+  const allowed = talkReplyFor(react.choice, quest).buttons.some((b) => b.id === choiceId);
+  if (!allowed) return;
+  react.reply = choiceId;
+  react.replyAt = Date.now();
+  react.follow = "";
+  if (choiceId === "more") ensureBonusQuest(quest.groupId, user.id);
+  notify();
+}
+
+function setTalkFollow(questId, choiceId) {
+  const user = currentUser();
+  const quest = getQuest(questId);
+  if (!user || !quest || quest.userId === user.id) return;
+  const react = (state.talkReacts || []).find((r) => r.questId === questId && r.userId === user.id);
+  if (!react || !react.reply || react.follow) return;
+  const allowed = talkFollowFor(react.reply).buttons.some((b) => b.id === choiceId);
+  if (!allowed) return;
+  react.follow = choiceId;
+  react.followAt = Date.now();
   notify();
 }
 

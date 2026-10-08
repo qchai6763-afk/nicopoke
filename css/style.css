@@ -982,6 +982,21 @@ a.ghost {
   font-size: 0.9rem;
 }
 
+.talk-turn {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #ffd0dc;
+}
+
+.talk-line {
+  margin: 0 0 6px;
+  font-weight: 700;
+}
+
+.talk-line.back {
+  color: #8a6a58;
+}
+
 .day-theme-ask {
   margin: 8px 0 0;
   font-weight: 700;

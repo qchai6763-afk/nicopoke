@@ -1,0 +1,8 @@
+{
+  "name": "にこぽけ",
+  "short_name": "にこぽけ",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fff6f8",
+  "theme_color": "#ff8fab"
+}
