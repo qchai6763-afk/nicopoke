@@ -164,7 +164,9 @@ function mergeSnapshots(existing, incoming) {
   (incoming.extraGrants || []).forEach((g) => upsertById(extraGrants, g));
   const rankWins = (existing.rankWins || []).slice();
   (incoming.rankWins || []).forEach((w) => upsertById(rankWins, w));
-  return { group, users, memberships, quests, guesses, comments, likes, talkReacts, fitVotes, extraGrants, rankWins };
+  const asks = (existing.asks || []).slice();
+  (incoming.asks || []).forEach((a) => upsertById(asks, a));
+  return { group, users, memberships, quests, guesses, comments, likes, talkReacts, fitVotes, extraGrants, rankWins, asks };
 }
 
 function parseGroup(data) {
@@ -362,11 +364,120 @@ function blobStore(token) {
       }
       throw new Error(`blob save failed: ${last}`);
     },
+    async getRaw(key) {
+      const path = blobPath(key);
+      if (token) {
+        for (const api of BLOB_APIS) {
+          try {
+            const meta = await blobRequest(api, `url=${encodeURIComponent(path)}`, token, storeId, "GET");
+            if (meta.ok && meta.json) {
+              const blobUrl = meta.json.url || meta.json.downloadUrl;
+              const bust = blobUrl ? `${blobUrl}${blobUrl.includes("?") ? "&" : "?"}t=${Date.now()}` : "";
+              const json = await readJsonUrl(bust);
+              if (json) return json;
+            }
+          } catch {
+            /* try next */
+          }
+        }
+      }
+      if (storeId) {
+        const json = await readJsonUrl(
+          `https://${storeId}.public.blob.vercel-storage.com/${path}?t=${Date.now()}`
+        );
+        if (json) return json;
+      }
+      return null;
+    },
+    async putRaw(key, data) {
+      const path = blobPath(key);
+      if (!token) throw new Error("blob token missing");
+      const payload = JSON.stringify(data);
+      const ids = storeIdCandidates(token);
+      if (!ids.length) ids.push("");
+      for (const api of BLOB_APIS) {
+        for (const id of ids) {
+          try {
+            const res = await blobRequest(api, `pathname=${encodeURIComponent(path)}`, token, id, "PUT", payload);
+            if (res.ok) return true;
+          } catch {
+            /* try next */
+          }
+        }
+      }
+      return false;
+    },
   };
 }
 
 function makeStore() {
   return blobStore(blobToken());
+}
+
+function loadWebPush() {
+  try {
+    return require("web-push");
+  } catch {
+    return null;
+  }
+}
+
+async function ensureVapid(store) {
+  const saved = await store.getRaw("vapid-keys");
+  if (saved && saved.publicKey && saved.privateKey) return saved;
+  const webpush = loadWebPush();
+  if (!webpush) throw new Error("web-push missing");
+  const keys = webpush.generateVAPIDKeys();
+  const body = { publicKey: keys.publicKey, privateKey: keys.privateKey };
+  await store.putRaw("vapid-keys", body);
+  return body;
+}
+
+async function savePushSub(store, code, payload) {
+  const sub = payload && payload.subscription;
+  if (!sub || !sub.endpoint || !payload.userId) return;
+  const key = `push-${code}`;
+  const current = (await store.getRaw(key)) || { subs: [] };
+  const subs = (current.subs || []).filter((row) => row.endpoint !== sub.endpoint);
+  subs.push({
+    userId: payload.userId,
+    endpoint: sub.endpoint,
+    keys: sub.keys || {},
+  });
+  await store.putRaw(key, { subs: subs.slice(-40) });
+}
+
+async function notifyNewPosts(store, existing, merged) {
+  const webpush = loadWebPush();
+  if (!webpush || !merged || !merged.group) return;
+  const before = {};
+  ((existing && existing.quests) || []).forEach((q) => {
+    if (q && q.id && q.photoDataUrl) before[q.id] = true;
+  });
+  const fresh = (merged.quests || []).filter((q) => q && q.photoDataUrl && !before[q.id]);
+  if (!fresh.length) return;
+  const keys = await ensureVapid(store);
+  webpush.setVapidDetails("mailto:nicopoke@example.com", keys.publicKey, keys.privateKey);
+  const saved = (await store.getRaw(`push-${merged.group.code}`)) || { subs: [] };
+  for (const quest of fresh) {
+    const who = (merged.users || []).find((u) => u.id === quest.userId);
+    const body = `${(who && who.name) || "だれか"}さんが写真を送りました`;
+    const targets = (saved.subs || []).filter((row) => row.userId !== quest.userId);
+    for (const row of targets) {
+      try {
+        await webpush.sendNotification(
+          { endpoint: row.endpoint, keys: row.keys },
+          JSON.stringify({ title: "にこぽけ", body, url: "https://nicopoke.vercel.app/#/feed" })
+        );
+      } catch (err) {
+        const status = err && err.statusCode;
+        if (status === 404 || status === 410) {
+          saved.subs = (saved.subs || []).filter((item) => item.endpoint !== row.endpoint);
+          await store.putRaw(`push-${merged.group.code}`, saved);
+        }
+      }
+    }
+  }
 }
 
 module.exports = async function handler(req, res) {
@@ -384,10 +495,27 @@ module.exports = async function handler(req, res) {
     }
 
     const store = makeStore();
+    if (url.searchParams.get("vapid")) {
+      try {
+        const keys = await ensureVapid(store);
+        send(res, 200, { ok: true, publicKey: keys.publicKey });
+      } catch (err) {
+        console.error("VAPID", err);
+        fail(res, 500, "PUSH_UNAVAILABLE");
+      }
+      return;
+    }
+
     const payload = req.method === "POST" || req.method === "PUT" ? req.body : null;
     const code = codeFromReq(req, payload);
     if (!/^[A-Z2-9]{4,8}$/.test(code)) {
       fail(res, 400, "BAD_CODE");
+      return;
+    }
+
+    if (payload && payload.action === "subscribe") {
+      await savePushSub(store, code, payload);
+      send(res, 200, { ok: true, stored: true });
       return;
     }
 
@@ -411,6 +539,7 @@ module.exports = async function handler(req, res) {
         const existing = parseGroup(await store.get(code));
         const merged = mergeSnapshots(existing, payload);
         await store.set(code, merged);
+        notifyNewPosts(store, existing, merged).catch((err) => console.error("PUSH", err));
         send(res, 200, {
           ok: true,
           stored: true,

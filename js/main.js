@@ -443,6 +443,8 @@ function renderToday() {
       }
       ${editor}
       ${stage}
+      <button type="button" class="ghost" data-enable-push>通知を受け取る</button>
+      <p class="help">${escapeHtml(window.__pushMsg || "iPhoneは「ホーム画面に追加」すると、アプリを閉じていても写真の通知が届きます。")}</p>
     `,
     "today"
   );
@@ -472,6 +474,7 @@ function renderToday() {
     window.__photoPreview = "";
     render();
   });
+  app.querySelector("[data-enable-push]")?.addEventListener("click", () => enablePush());
 }
 
 function postCard(quest, viewerId) {
@@ -501,41 +504,79 @@ function postCard(quest, viewerId) {
 
   const prompt = talkPromptFor(quest);
   const minePick = myTalkReact(quest.id, viewerId);
-  const byChoice = {};
-  latestTalkReacts(quest.id).forEach((r) => {
-    const u = userById(r.userId);
-    if (!u) return;
-    byChoice[r.choice] = byChoice[r.choice] || [];
-    byChoice[r.choice].push(u.shortName);
-  });
-  const talkSum = prompt.buttons
-    .map((b) => {
-      const names = byChoice[b.id] || [];
-      if (!names.length) return "";
-      return `${names.join("・")}が「${b.label}」`;
+  const talkLines = latestTalkReacts(quest.id)
+    .map((r) => {
+      const who = userById(r.userId);
+      if (!who) return "";
+      const said = talkButtonLabel(prompt, r.choice);
+      const replySet = talkReplyFor(r.choice, quest);
+      const answered = r.reply ? talkButtonLabel(replySet, r.reply) : "";
+      const followSet = talkFollowFor(r.reply);
+      const followed = r.follow ? talkButtonLabel(followSet, r.follow) : "";
+      const ownerName = escapeHtml(userById(quest.userId)?.shortName || "");
+      const back = answered
+        ? '<p class="talk-line back"><b>' +
+          ownerName +
+          "</b>「" +
+          escapeHtml(answered) +
+          "」" +
+          (r.reply === "more" ? "　今日の画面でもう一枚送れます。" : "") +
+          "</p>"
+        : mine
+          ? `<p class="kicker">${escapeHtml(replySet.q)}</p>
+             <div class="talk-btns">
+               ${replySet.buttons
+                 .map(
+                   (b) =>
+                     `<button type="button" class="talk-btn" data-talk-reply="${quest.id}" data-talk-to="${escapeHtml(
+                       r.userId
+                     )}" data-talk-reply-choice="${escapeHtml(b.id)}">${escapeHtml(b.label)}</button>`
+                 )
+                 .join("")}
+             </div>`
+          : `<p class="help">返事を待っています。</p>`;
+      const tail =
+        answered && followed
+          ? '<p class="talk-line"><b>' + escapeHtml(who.shortName) + "</b>「" + escapeHtml(followed) + "」</p>"
+          : answered && viewerId === r.userId
+            ? '<p class="kicker">' +
+              escapeHtml(followSet.q) +
+              '</p><div class="talk-btns">' +
+              followSet.buttons
+                .map(
+                  (b) =>
+                    '<button type="button" class="talk-btn" data-talk-follow="' +
+                    quest.id +
+                    '" data-talk-follow-choice="' +
+                    escapeHtml(b.id) +
+                    '">' +
+                    escapeHtml(b.label) +
+                    "</button>"
+                )
+                .join("") +
+              "</div>"
+            : "";
+      return `<div class="talk-turn"><p class="talk-line"><b>${escapeHtml(who.shortName)}</b>「${escapeHtml(said)}」</p>${back}${tail}</div>`;
     })
-    .filter(Boolean)
-    .join("　");
+    .join("");
   const talkAsk = posted
     ? `<div class="talk-ask">
          <p class="kicker">${escapeHtml(prompt.q)}</p>
-         <div class="talk-btns">
+         ${
+           mine
+             ? ""
+             : `<div class="talk-btns">
            ${prompt.buttons
              .map(
                (b) =>
                  `<button type="button" class="talk-btn ${
                    minePick && minePick.choice === b.id ? "on" : ""
-                 }" data-talk-react="${quest.id}" data-talk-choice="${escapeHtml(b.id)}" ${
-                   mine ? "disabled" : ""
-                 }>${escapeHtml(b.label)}</button>`
+                 }" data-talk-react="${quest.id}" data-talk-choice="${escapeHtml(b.id)}">${escapeHtml(b.label)}</button>`
              )
              .join("")}
-         </div>
-         ${
-           talkSum
-             ? `<p class="talk-sum">${escapeHtml(talkSum)}</p>`
-             : `<p class="help">${mine ? "家族がボタンで返事してくれます。" : "大きいボタンを押すだけで届きます。"}</p>`
+         </div>`
          }
+         ${talkLines || `<p class="help">${mine ? "家族がボタンで声をかけると、ここに返事が出ます。" : "大きいボタンを押すと、相手がボタンで返します。"}</p>`}
        </div>`
     : "";
 
@@ -559,6 +600,38 @@ function postCard(quest, viewerId) {
              <p class="help">外すと、この写真の人が順位で有利になる。外したボタンは消える。</p>
            </div>`
         : "";
+  const askedRows = !mine && posted ? asksFor(quest.id, viewerId) : [];
+  const askQuota = !mine && posted && !guessedRight(quest.id, viewerId) ? missCountFor(quest.id, viewerId) : 0;
+  const askedIds = {};
+  askedRows.forEach((row) => {
+    askedIds[row.questionId] = row;
+  });
+  const askPool = shuffleSeeded(ASK_QUESTIONS || [], `${quest.id}:ask`);
+  const askLeft = askPool.filter((q) => !askedIds[q.id]).slice(0, 4);
+  const askUi =
+    !mine && posted && !guessedRight(quest.id, viewerId)
+      ? `<div class="choice-box">
+           <p class="kicker">質問 ${askedRows.length} / ${askQuota}</p>
+           ${askedRows
+             .map((row) => {
+               const q = questionById(row.questionId);
+               return `<p class="talk-line">${escapeHtml(q ? q.text : "")}　${row.answer ? "はい" : "いいえ"}</p>`;
+             })
+             .join("")}
+           ${
+             askedRows.length < askQuota
+               ? `<div class="choice-grid">${askLeft
+                   .map(
+                     (q) =>
+                       `<button type="button" class="choice-btn" data-ask="${quest.id}" data-ask-id="${escapeHtml(
+                         q.id
+                       )}">${escapeHtml(q.text)}</button>`
+                   )
+                   .join("")}</div>`
+               : `<p class="help">${askQuota ? "質問を使い切りました。もう1回外すと、1つ増えます。" : "六択を1回外すと、質問が1つ増えます。答えは自動で、はい／いいえです。"}</p>`
+           }
+         </div>`
+      : "";
   const groupNow = currentGroup();
   const leaderNow = groupNow && quest.date === todayKey() ? dayRank(groupNow.id, quest.date).leader : null;
   const alreadyGranted = groupNow ? grantedExtraToday(groupNow.id, viewerId) : null;
@@ -645,6 +718,7 @@ function postCard(quest, viewerId) {
       ${waitCopy}
       ${captionLine}
       ${choiceUi}
+      ${askUi}
       ${grantUi}
       ${fitCheck}
       ${talkAsk}
@@ -696,6 +770,12 @@ function bindFeedActions() {
   app.querySelectorAll("[data-talk-react]").forEach((btn) => {
     btn.addEventListener("click", () => setTalkReact(btn.dataset.talkReact, btn.dataset.talkChoice));
   });
+  app.querySelectorAll("[data-talk-reply]").forEach((btn) => {
+    btn.addEventListener("click", () => setTalkReply(btn.dataset.talkReply, btn.dataset.talkTo, btn.dataset.talkReplyChoice));
+  });
+  app.querySelectorAll("[data-talk-follow]").forEach((btn) => {
+    btn.addEventListener("click", () => setTalkFollow(btn.dataset.talkFollow, btn.dataset.talkFollowChoice));
+  });
   app.querySelectorAll("[data-reveal]").forEach((btn) => {
     btn.addEventListener("click", () => revealTheme(btn.dataset.reveal));
   });
@@ -708,6 +788,9 @@ function bindFeedActions() {
       if (!guess) return;
       playResultTone(guess.correct);
     });
+  });
+  app.querySelectorAll("[data-ask]").forEach((btn) => {
+    btn.addEventListener("click", () => askQuestion(btn.dataset.ask, btn.dataset.askId));
   });
   app.querySelectorAll("[data-grant-extra]").forEach((btn) => {
     btn.addEventListener("click", () => grantExtraPhoto(btn.dataset.grantExtra));
@@ -1242,6 +1325,52 @@ document.addEventListener(
   },
   true
 );
+
+function vapidKeyBytes(base64) {
+  const pad = "=".repeat((4 - (base64.length % 4)) % 4);
+  const raw = atob((base64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i += 1) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+async function enablePush() {
+  const group = currentGroup();
+  const user = currentUser();
+  if (!group || !user) return;
+  if (!window.Notification || !navigator.serviceWorker || !window.PushManager) {
+    window.__pushMsg = "この端末では、閉じてからの通知はできません。";
+    render();
+    return;
+  }
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted") {
+    window.__pushMsg = "通知が許可されませんでした。";
+    render();
+    return;
+  }
+  try {
+    const reg = await navigator.serviceWorker.register("sw.js");
+    const origin = cloudOrigin();
+    const keyRes = await fetch(`${origin}/api/group?vapid=1`, { cache: "no-store" });
+    const keyData = await keyRes.json();
+    if (!keyData.publicKey) throw new Error("no key");
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: vapidKeyBytes(keyData.publicKey),
+    });
+    const code = normalizeCode(group.code);
+    await fetch(`${origin}/api/group?code=${encodeURIComponent(code)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Join-Code": code },
+      body: JSON.stringify({ action: "subscribe", userId: user.id, subscription: sub.toJSON() }),
+    });
+    window.__pushMsg = "通知をオンにしました。";
+  } catch {
+    window.__pushMsg = "通知の設定ができませんでした。通信を確かめて、もう一度押してください。";
+  }
+  render();
+}
 
 boot();
 refreshFromCloud().then((changed) => {

@@ -312,6 +312,275 @@ const TALK_PROMPT_THEMES = {
   },
 };
 
+const TALK_REPLIES = {
+  like: {
+    q: "だれに似てる？",
+    buttons: [
+      { id: "self", label: "自分やろ" },
+      { id: "parent", label: "親に似てる" },
+      { id: "nope", label: "全然ちがう" },
+    ],
+  },
+  fun: {
+    q: "どこがおもしろい？",
+    buttons: [
+      { id: "face", label: "この顔やろ" },
+      { id: "real", label: "本気やで" },
+      { id: "more", label: "もっといく" },
+    ],
+  },
+  again: {
+    q: "もう一回、どうする？",
+    buttons: [
+      { id: "more", label: "いまもう一枚" },
+      { id: "hard", label: "うまくできひん" },
+      { id: "done", label: "今日は満足" },
+    ],
+  },
+  nice: {
+    q: "どこがよかった？",
+    buttons: [
+      { id: "color", label: "色やろ" },
+      { id: "mood", label: "雰囲気やろ" },
+      { id: "luck", label: "偶然や" },
+    ],
+  },
+  wow: {
+    q: "なにがすごい？",
+    buttons: [
+      { id: "shock", label: "自分でも驚く" },
+      { id: "normal", label: "普通やろ" },
+      { id: "old", label: "昔からこう" },
+    ],
+  },
+  cool: {
+    q: "決まってた？",
+    buttons: [
+      { id: "sure", label: "当然" },
+      { id: "shy", label: "照れてる" },
+      { id: "more", label: "もう一回決める" },
+    ],
+  },
+  sleep: {
+    q: "ねむいの？",
+    buttons: [
+      { id: "awake", label: "寝てない" },
+      { id: "five", label: "あと5分" },
+      { id: "night", label: "おやすみ" },
+    ],
+  },
+  yawn: {
+    q: "うつった？",
+    buttons: [
+      { id: "no", label: "うつしてない" },
+      { id: "together", label: "一緒に寝る？" },
+      { id: "hold", label: "我慢した" },
+    ],
+  },
+  laugh: {
+    q: "つられた？",
+    buttons: [
+      { id: "win", label: "作戦成功" },
+      { id: "more", label: "もう一回笑う" },
+      { id: "serious", label: "まだ本気じゃない" },
+    ],
+  },
+  sour: {
+    q: "すっぱさの正体は？",
+    buttons: [
+      { id: "lemon", label: "レモンや" },
+      { id: "ume", label: "梅干しや" },
+      { id: "sweet", label: "実は甘いやで" },
+    ],
+  },
+  yuck: {
+    q: "まずさの正体は？",
+    buttons: [
+      { id: "food", label: "ごはんや" },
+      { id: "drink", label: "飲み物や" },
+      { id: "act", label: "演技や" },
+    ],
+  },
+  warm: {
+    q: "どのくらい熱い？",
+    buttons: [
+      { id: "hot", label: "熱いよ" },
+      { id: "mild", label: "ぬるい" },
+      { id: "try", label: "飲んでみて" },
+    ],
+  },
+  cold: {
+    q: "どのくらい冷たい？",
+    buttons: [
+      { id: "ice", label: "キンキン" },
+      { id: "bit", label: "ちょっとだけ" },
+      { id: "touch", label: "触ってみて" },
+    ],
+  },
+};
+
+const TALK_FOLLOWS = {
+  q: "それになんて返す？",
+  buttons: [
+    { id: "haha", label: "わろた" },
+    { id: "oh", label: "そうなんや" },
+    { id: "again", label: "もっと見せて" },
+  ],
+};
+
+const THEME_ASK_REPLIES = {
+  すっぱいものを食べた時の顔: {
+    q: "なにがすっぱかった？",
+    buttons: [
+      { id: "lemon", label: "レモン" },
+      { id: "ume", label: "梅干し" },
+      { id: "secret", label: "ひみつ" },
+    ],
+  },
+  まずいのを食べた時の顔: {
+    q: "なにがまずかった？",
+    buttons: [
+      { id: "food", label: "ごはん" },
+      { id: "drink", label: "飲み物" },
+      { id: "secret", label: "ひみつ" },
+    ],
+  },
+  いま飲んでいるもの: {
+    q: "なに飲んでる？",
+    buttons: [
+      { id: "tea", label: "お茶" },
+      { id: "coffee", label: "コーヒー" },
+      { id: "secret", label: "ひみつ" },
+    ],
+  },
+  あたたかいもの: {
+    q: "なにがあたたかい？",
+    buttons: [
+      { id: "tea", label: "飲み物" },
+      { id: "food", label: "食べもの" },
+      { id: "secret", label: "ひみつ" },
+    ],
+  },
+  つめたいもの: {
+    q: "なにがつめたい？",
+    buttons: [
+      { id: "ice", label: "氷もの" },
+      { id: "drink", label: "冷たい飲みもの" },
+      { id: "secret", label: "ひみつ" },
+    ],
+  },
+  今日の空: {
+    q: "いまの空は？",
+    buttons: [
+      { id: "day", label: "昼間" },
+      { id: "eve", label: "夕方" },
+      { id: "night", label: "夜" },
+    ],
+  },
+  昔の写真: {
+    q: "いつの写真？",
+    buttons: [
+      { id: "kid", label: "子どものころ" },
+      { id: "young", label: "若いころ" },
+      { id: "secret", label: "ひみつ" },
+    ],
+  },
+};
+
+const ASK_QUESTIONS = [
+  {
+    id: "face",
+    text: "顔の写真？",
+    yes: [
+      "下からの顔",
+      "上からの顔",
+      "すっぱいものを食べた時の顔",
+      "まずいのを食べた時の顔",
+      "真剣な顔",
+      "半開きの口",
+      "キメ顔",
+      "機嫌悪そうな顔",
+      "眠い顔",
+      "びっくりした顔",
+      "泣きそうな顔",
+      "思い切り笑った顔",
+      "口をへの字にした顔",
+      "ウインク",
+      "舌を出した顔",
+      "横顔",
+      "後ろ姿（うなじ・後頭部）",
+      "目だけアップ",
+      "鼻のアップ",
+      "両手で顔を隠した顔",
+      "あくびしている顔",
+      "鏡に映った自分",
+    ],
+  },
+  {
+    id: "food",
+    text: "食べ物？",
+    yes: ["最近の外食でおいしかった食べ物", "今日のおやつ・ごはん", "今一番食べたいもの"],
+  },
+  {
+    id: "drink",
+    text: "飲み物？",
+    yes: ["いま飲んでいるもの"],
+  },
+  {
+    id: "mouth",
+    text: "口がポイント？",
+    yes: [
+      "半開きの口",
+      "口をへの字にした顔",
+      "舌を出した顔",
+      "あくびしている顔",
+      "すっぱいものを食べた時の顔",
+      "まずいのを食べた時の顔",
+      "思い切り笑った顔",
+    ],
+  },
+  {
+    id: "angle",
+    text: "撮る位置がポイント？",
+    yes: ["下からの顔", "上からの顔", "横顔"],
+  },
+  {
+    id: "part",
+    text: "顔の一部のアップ？",
+    yes: ["目だけアップ", "鼻のアップ"],
+  },
+  {
+    id: "place",
+    text: "部屋や景色？",
+    yes: ["いまいる部屋", "いまの机の上", "今日の空"],
+  },
+  {
+    id: "body",
+    text: "服や体の一部？",
+    yes: ["今日の服装", "靴だけ", "手元（いま持ってるもの）"],
+  },
+  {
+    id: "old",
+    text: "昔の写真？",
+    yes: ["昔の写真"],
+  },
+  {
+    id: "temp",
+    text: "あたたかさや冷たさ？",
+    yes: ["あたたかいもの", "つめたいもの"],
+  },
+  {
+    id: "hidden",
+    text: "顔が見えない？",
+    yes: ["両手で顔を隠した顔", "後ろ姿（うなじ・後頭部）"],
+  },
+  {
+    id: "thing",
+    text: "持っているもの？",
+    yes: ["今はまってるもの", "最近買ったもの", "好きな色のもの", "手元（いま持ってるもの）"],
+  },
+];
+
 const ICONS = ["🌸", "🌞", "🍀", "☕", "📷", "🌙", "🐶", "🐱", "🍙", "🏠", "🌻", "📚", "🎹", "🚲", "🌊"];
 
 const USER_COLORS = ["#ff8a7a", "#7ec8a3", "#ffb347", "#8ecae6", "#c9a0dc", "#ff8fab"];
