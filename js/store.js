@@ -63,6 +63,22 @@ function slotFromHash(userId, dateKey) {
   };
 }
 
+function catForTheme(theme) {
+  return SLOT_CATS.find((c) => c.items.includes(theme)) || SLOT_CATS[0];
+}
+
+function groupThemeSlot(groupId, dateKey) {
+  const h = hashString(`${groupId}:${dateKey}:shared-theme`);
+  const theme = THEMES[h % THEMES.length];
+  const cat = catForTheme(theme);
+  return {
+    theme,
+    category: cat.id,
+    categoryLabel: cat.label,
+    categoryEmoji: cat.emoji,
+  };
+}
+
 function pickSlot(except) {
   const cat = SLOT_CATS[Math.floor(Math.random() * SLOT_CATS.length)];
   const pool = cat.items.filter((t) => t !== except);
@@ -342,17 +358,31 @@ function photoIsLive(quest, deletedAt) {
   return stamp(quest.postedAt) > stamp(deletedAt);
 }
 
+function applyThemeFields(base, src) {
+  return Object.assign({}, base, {
+    theme: src.theme,
+    themeOptions: src.themeOptions,
+    category: src.category,
+    categoryLabel: src.categoryLabel,
+    categoryEmoji: src.categoryEmoji,
+    themeAt: Math.max(stamp(base.themeAt), stamp(src.themeAt)),
+  });
+}
+
 function pickQuest(local, incoming) {
   const deletedAt = Math.max(stamp(local.deletedAt), stamp(incoming.deletedAt));
   const localLive = photoIsLive(local, deletedAt);
   const incomingLive = photoIsLive(incoming, deletedAt);
   if (incomingLive && !localLive) return incoming;
   if (localLive && !incomingLive) {
-    return Object.assign({}, incoming, {
-      photoDataUrl: local.photoDataUrl,
-      caption: incoming.caption || local.caption,
-      postedAt: stamp(local.postedAt) || stamp(incoming.postedAt),
-    });
+    return applyThemeFields(
+      Object.assign({}, incoming, {
+        photoDataUrl: local.photoDataUrl,
+        caption: incoming.caption || local.caption,
+        postedAt: stamp(local.postedAt) || stamp(incoming.postedAt),
+      }),
+      local
+    );
   }
   if (!localLive && !incomingLive && deletedAt) {
     const base = stamp(incoming.postedAt) > stamp(local.postedAt) ? incoming : local;
@@ -364,8 +394,11 @@ function pickQuest(local, incoming) {
       deletedAt,
     });
   }
-  if (stamp(incoming.postedAt) > stamp(local.postedAt)) return incoming;
-  return local;
+  if (localLive && incomingLive) {
+    return stamp(incoming.postedAt) > stamp(local.postedAt) ? incoming : local;
+  }
+  const themeSrc = stamp(incoming.themeAt) >= stamp(local.themeAt) ? incoming : local;
+  return applyThemeFields(Object.assign({}, themeSrc), themeSrc);
 }
 
 function settleQuest(quest, a, b) {
@@ -693,13 +726,13 @@ function addMemberToCurrentGroup({ name }) {
 
 function ensureTodayQuests(groupId) {
   const date = todayKey();
+  const slot = groupThemeSlot(groupId, date);
   const members = groupMembers(groupId);
   members.forEach((member) => {
     const exists = state.quests.find(
       (q) => q.groupId === groupId && q.userId === member.id && q.date === date
     );
     if (!exists) {
-        const slot = slotFromHash(member.id, date);
         const questId = `q-${member.id}-${date}`;
         state.quests.push({
           id: questId,
@@ -707,31 +740,24 @@ function ensureTodayQuests(groupId) {
           userId: member.id,
           date,
           theme: slot.theme,
-          themeOptions: makeThemeTrio(questId, slot.theme, 0),
+          themeOptions: [slot.theme],
           category: slot.category,
           categoryLabel: slot.categoryLabel,
           categoryEmoji: slot.categoryEmoji,
+          themeAt: Date.now(),
           rerollsUsed: 0,
           photoDataUrl: "",
           caption: "",
           revealed: false,
           postedAt: null,
         });
-    } else if (!isPosted(exists)) {
-      const staleTheme = !THEMES.includes(exists.theme);
-      const staleOptions =
-        !Array.isArray(exists.themeOptions) ||
-        exists.themeOptions.some((t) => t !== exists.theme && !THEMES.includes(t));
-      if (staleTheme) {
-        const slot = slotFromHash(member.id, date);
-        exists.theme = slot.theme;
-        exists.category = slot.category;
-        exists.categoryLabel = slot.categoryLabel;
-        exists.categoryEmoji = slot.categoryEmoji;
-        exists.themeOptions = makeThemeTrio(exists.id, exists.theme, exists.rerollsUsed || 0);
-      } else if (staleOptions) {
-        exists.themeOptions = makeThemeTrio(exists.id, exists.theme, exists.rerollsUsed || 0);
-      }
+    } else if (!isPosted(exists) && exists.theme !== slot.theme) {
+      exists.theme = slot.theme;
+      exists.category = slot.category;
+      exists.categoryLabel = slot.categoryLabel;
+      exists.categoryEmoji = slot.categoryEmoji;
+      exists.themeOptions = [slot.theme];
+      exists.themeAt = Date.now();
     }
   });
   persist();
@@ -752,10 +778,7 @@ function getQuest(id) {
 }
 
 function canSeeTheme(quest, viewerId) {
-  if (!quest) return false;
-  if (quest.userId === viewerId) return true;
-  if (quest.revealed) return true;
-  return guessedRight(quest.id, viewerId);
+  return Boolean(quest && isPosted(quest));
 }
 
 function isPosted(quest) {
@@ -801,10 +824,11 @@ function rerollQuest(questId) {
 function setQuestTheme(questId, theme) {
   const quest = getQuest(questId);
   if (!quest || isPosted(quest)) return { ok: false, error: "投稿あとにお題は変えられません" };
-  const t = String(theme || "").trim().slice(0, 24);
+  const t = String(theme || "").trim().slice(0, 40);
   if (!t) return { ok: false, error: "お題を入れてください" };
   const found = SLOT_CATS.find((c) => c.items.includes(t));
   quest.theme = t;
+  quest.themeAt = Date.now();
   if (!Array.isArray(quest.themeOptions) || !quest.themeOptions.includes(t)) {
     quest.themeOptions = makeThemeTrio(quest.id, t, quest.rerollsUsed || 0);
   }

@@ -252,7 +252,7 @@ function personFields(prefix, defaults = {}) {
 function privacyListHtml() {
   return `
     <ul class="privacy-list">
-      <li>写真・一言コメント・名前・いいね・コメント・お題の予想は、グループの共有サーバーに保存されます。参加コードを知っている人は、これらを見られます。</li>
+      <li>写真・一言コメント・名前・いいね・コメントは、グループの共有サーバーに保存されます。参加コードを知っている人は、これらを見られます。</li>
       <li>脳トレの記録と元気予報の結果は、このスマホの中だけに残ります。家族には送られません。</li>
       <li>写真に自分以外の人が写るときは、送る前にその人に聞いてください。</li>
       <li>送った写真は、日がたってもアルバムに残り、「思い出神経衰弱」のカードとしてグループのみんなに表示されます。</li>
@@ -282,7 +282,7 @@ function renderLogin() {
     <div class="gate">
       <div class="badge">にこぽけ</div>
       <h1>今日の一枚を、<br />みんなで。</h1>
-      <p>お題をひとつ選んで、写真を送ります。家族は写真を見てお題を当て、おしゃべりします。</p>
+      <p>その日みんな同じお題で写真を送ります。家族は写真を見て、おしゃべりします。</p>
       ${err ? `<p class="gate-err">${escapeHtml(err)}</p>` : ""}
       ${warn ? `<p class="gate-warn">${escapeHtml(warn)}</p>` : ""}
       ${
@@ -395,21 +395,9 @@ function renderToday() {
     ? `<div class="notice risk-note">🔥 ${streak}日連続が、今日で途切れそうです<small>いま一枚送ると、記録がつながります。</small></div>`
     : "";
 
-  const trio = posted ? [] : themeTrio(quest);
-  const editor = posted
-    ? ""
-    : `<div class="theme-edit">
-         <p class="kicker">お題を1つ選ぶ</p>
-         <div class="chips trio">
-           ${trio
-             .map(
-               (t) =>
-                 `<button class="chip ${t === quest.theme ? "on" : ""}" type="button" data-set-theme="${escapeHtml(
-                   t
-                 )}">${escapeHtml(t)}</button>`
-             )
-             .join("")}
-         </div>
+  const editor = `<div class="day-theme">
+         <p class="kicker">今日みんなのお題</p>
+         <p class="day-theme-text">${escapeHtml(quest.categoryEmoji || "")} ${escapeHtml(quest.theme)}</p>
        </div>`;
 
   const preview = window.__photoPreview;
@@ -418,7 +406,7 @@ function renderToday() {
          <img src="${quest.photoDataUrl}" alt="" />
          <div class="done-chip">送りました</div>
        </div>
-       <p class="theme-mine">あなたの答え　${escapeHtml(quest.theme)}</p>
+       <p class="theme-mine">今日のお題　${escapeHtml(quest.theme)}</p>
        ${quest.caption ? `<p class="caption-line">「${escapeHtml(quest.caption)}」</p>` : ""}
        <a class="primary" href="#/feed">みんなの写真を見る</a>
        <a class="ghost" href="#/brain">脳トレで息抜き</a>`
@@ -451,7 +439,7 @@ function renderToday() {
       ${
         posted
           ? ""
-          : `<p class="help">3つのうち1つを選んで写真を送ってください。家族には答えの文字は見えません。家族は写真を見てお題を当てます。答えは、自分で見せることもできます。</p>`
+          : `<p class="help">今日はグループみんな、同じお題で一枚送ります。写真の違いを見ておしゃべりしてください。</p>`
       }
       ${editor}
       ${stage}
@@ -484,66 +472,6 @@ function renderToday() {
     window.__photoPreview = "";
     render();
   });
-  app.querySelectorAll("[data-set-theme]").forEach((btn) => {
-    btn.addEventListener("click", () => setQuestTheme(quest.id, btn.dataset.setTheme));
-  });
-}
-
-function guessUi(quest, viewerId) {
-  if (!isPosted(quest)) return "";
-  const mine = quest.userId === viewerId;
-  const canSee = canSeeTheme(quest, viewerId);
-  const all = guessesFor(quest.id);
-  const list = all.length
-    ? `<ul class="guess-list">${all
-        .map((g) => {
-          const gu = userById(g.userId);
-          const name = escapeHtml(gu?.shortName || "");
-          if (g.correct) {
-            return `<li class="hit"><b>${name}</b>⭕ 正解！${canSee ? `「${escapeHtml(g.text)}」` : ""}</li>`;
-          }
-          return `<li><b>${name}</b>❌「${escapeHtml(g.text)}」</li>`;
-        })
-        .join("")}</ul>`
-    : "";
-
-  if (mine) {
-    return `<div class="guess-box">
-        <p class="guess-answer">答え：${escapeHtml(quest.theme)}</p>
-        <p class="check-lab">みんなの予想</p>
-        ${list || `<p class="help">まだだれも予想していません。</p>`}
-      </div>`;
-  }
-
-  const right = guessedRight(quest.id, viewerId);
-  const hints = right ? [] : autoGuessHints(quest, viewerId);
-  const hintHtml = hints.length
-    ? `<div class="guess-hint">${hints
-        .map((h) => `<p>ヒント：${escapeHtml(h)}</p>`)
-        .join("")}</div>`
-    : "";
-  let form = "";
-  if (right) {
-    form = `<p class="guess-note ok">当たりました！</p>
-      <p class="guess-answer">答え：${escapeHtml(quest.theme)}</p>`;
-  } else if (quest.revealed) {
-    form = `<p class="guess-note">${escapeHtml(userById(quest.userId)?.shortName || "")}さんが答えを見せてくれました。</p>
-      <p class="guess-answer">答え：${escapeHtml(quest.theme)}</p>`;
-  } else {
-    form = `${hintHtml}
-      <form class="composer" data-guess="${quest.id}">
-        <div class="actions">
-          <input class="pill" name="guess" maxlength="30" placeholder="お題はなんだと思う？" autocomplete="off" />
-          <button class="pill-btn" type="submit">当てる</button>
-        </div>
-      </form>
-      <p class="help guess-help">だいたい合っていれば正解です。2回外すとヒントが出ます。何回でも当てられます。</p>`;
-  }
-  return `<div class="guess-box">
-      <p class="check-lab">お題あて</p>
-      ${form}
-      ${list}
-    </div>`;
 }
 
 function postCard(quest, viewerId) {
@@ -561,7 +489,7 @@ function postCard(quest, viewerId) {
 
   const media = posted
     ? `<img src="${quest.photoDataUrl}" alt="" />
-       ${canSeeTheme(quest, viewerId) ? `<div class="tag">答え：${escapeHtml(quest.theme)}</div>` : ""}`
+       <div class="tag">お題：${escapeHtml(quest.theme)}</div>`
     : `<div class="locked"><div><span>🔒</span><em>waiting</em></div></div>`;
 
   const waitCopy = !posted
@@ -569,14 +497,11 @@ function postCard(quest, viewerId) {
     : "";
 
   const captionLine =
-    posted && quest.caption
-      ? `<p class="caption-line">「${escapeHtml(quest.caption)}」</p>`
-      : posted && !mine
-        ? `<p class="help">写真を見て、お題を当ててみましょう。</p>`
-        : "";
+    posted && quest.caption ? `<p class="caption-line">一言「${escapeHtml(quest.caption)}」</p>` : "";
 
   const talkUi = posted
     ? `<div class="talk">
+         <p class="kicker">おしゃべり</p>
          ${
            hidden || (expanded && comments.length > VISIBLE_COMMENTS)
              ? `<button class="thread-toggle" type="button" data-toggle-comments="${quest.id}">
@@ -597,11 +522,11 @@ function postCard(quest, viewerId) {
                     })
                     .join("")}
                 </div>`
-             : ""
+             : `<p class="help">写真を見て、ひとこと書いてください。</p>`
          }
          <form class="composer" data-comment="${quest.id}">
            <div class="actions">
-             <input class="pill" name="text" placeholder="コメントを書く" />
+             <input class="pill" name="text" placeholder="おしゃべりを書く" />
              <button class="pill-btn" type="submit">送る</button>
            </div>
          </form>
@@ -619,7 +544,6 @@ function postCard(quest, viewerId) {
       <div class="frame">${media}</div>
       ${waitCopy}
       ${captionLine}
-      ${guessUi(quest, viewerId)}
       ${
         posted
           ? `<div class="react">
@@ -630,11 +554,6 @@ function postCard(quest, viewerId) {
              ${
                mine
                  ? `<div class="owner-actions">
-                      ${
-                        quest.revealed
-                          ? `<span class="react-n">答えを家族に見せています</span>`
-                          : `<button type="button" class="like-btn" data-reveal="${quest.id}">答えを家族に見せる</button>`
-                      }
                       <button type="button" class="like-btn danger" data-delete-post="${quest.id}">この写真を消す</button>
                     </div>`
                  : ""
@@ -669,15 +588,6 @@ function bindFeedActions() {
   });
   app.querySelectorAll("[data-like]").forEach((btn) => {
     btn.addEventListener("click", () => toggleLike(btn.dataset.like));
-  });
-  app.querySelectorAll("[data-guess]").forEach((form) => {
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      submitGuess(form.dataset.guess, new FormData(form).get("guess"));
-    });
-  });
-  app.querySelectorAll("[data-reveal]").forEach((btn) => {
-    btn.addEventListener("click", () => revealTheme(btn.dataset.reveal));
   });
   bindDeletePost(app);
   app.querySelectorAll("[data-toggle-comments]").forEach((btn) => {
@@ -748,6 +658,21 @@ function renderFeed() {
         <button type="button" class="time-btn" data-feed-newer ${isLatest ? "disabled" : ""}>最新へ →</button>
       </div>
       ${viewDate === today ? statusRow(group, user.id) : ""}
+      ${(() => {
+        const postedThemes = quests.filter((q) => isPosted(q)).map((q) => q.theme);
+        const unique = [...new Set(postedThemes)];
+        const label =
+          unique.length === 1
+            ? unique[0]
+            : viewDate === today
+              ? groupThemeSlot(group.id, viewDate).theme
+              : "";
+        if (!label) return "";
+        return `<div class="day-theme">
+          <p class="kicker">${viewDate === today ? "今日みんなのお題" : "この日のお題"}</p>
+          <p class="day-theme-text">${escapeHtml(label)}</p>
+        </div>`;
+      })()}
       ${
         top
           ? `<div class="board">
@@ -991,7 +916,7 @@ function tutorialSlides() {
       img: "img/brain-intro-memory.png",
       alt: "家族の写真カードのイラスト",
       title: "今日の一枚を送る",
-      text: "下の「今日」から写真を送ります。家族の投稿は「家族」で見て、お題を当てられます。",
+      text: "下の「今日」から、みんな同じお題で写真を送ります。家族の投稿は「家族」で見て、おしゃべりできます。",
     },
     {
       img: "img/brain-intro-order.png",

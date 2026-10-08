@@ -660,94 +660,434 @@ const NAZO_QUIZ = [
   },
 ];
 
+function animalEntry(key, extra) {
+  const ok = [key].concat(extra || []);
+  const hira = String(key).replace(/[ァ-ン]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60));
+  const kata = String(key).replace(/[ぁ-ん]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) + 0x60));
+  [hira, kata].forEach((x) => {
+    if (x && !ok.includes(x)) ok.push(x);
+  });
+  return { key, ok };
+}
+
 const ANIMAL_SETS = [
   {
     kana: "あ",
     items: [
-      { key: "アライグマ", ok: ["あらいぐま", "アライグマ", "洗熊"] },
-      { key: "アザラシ", ok: ["あざらし", "アザラシ", "海豹"] },
-      { key: "アリクイ", ok: ["ありくい", "アリクイ", "蟻食い", "蟻食"] },
-      { key: "アルマジロ", ok: ["あるまじろ", "アルマジロ"] },
-      { key: "アヒル", ok: ["あひる", "アヒル", "家鴨"] },
+      animalEntry("あひる", ["家鴨"]),
+      animalEntry("あざらし", ["海豹"]),
+      animalEntry("あしか", ["海驢"]),
+      animalEntry("あり", ["蟻"]),
+      animalEntry("ありくい", ["蟻食い", "蟻食"]),
+      animalEntry("あらいぐま", ["洗熊"]),
+      animalEntry("あるまじろ", []),
+      animalEntry("あなぐま", ["穴熊"]),
+      animalEntry("あまがえる", ["雨蛙"]),
+      animalEntry("あゆ", ["鮎"]),
+      animalEntry("あじ", ["鯵"]),
+      animalEntry("あんこう", ["鮟鱇"]),
+      animalEntry("あほうどり", ["信天翁"]),
+      animalEntry("あかえい", ["赤鱏"]),
+      animalEntry("あおむし", ["青虫"]),
+      animalEntry("あげは", ["揚羽", "あげはちょう"]),
     ],
   },
   {
     kana: "い",
     items: [
-      { key: "いぬ", ok: ["いぬ", "犬", "イヌ"] },
-      { key: "いのしし", ok: ["いのしし", "イノシシ", "猪"] },
-      { key: "いるか", ok: ["いるか", "イルカ"] },
-      { key: "いたち", ok: ["いたち", "イタチ"] },
-      { key: "いぐあな", ok: ["いぐあな", "イグアナ"] },
+      animalEntry("いぬ", ["犬"]),
+      animalEntry("いのしし", ["猪"]),
+      animalEntry("いるか", ["海豚"]),
+      animalEntry("いたち", ["鼬"]),
+      animalEntry("いぐあな", []),
+      animalEntry("いもり", ["井守"]),
+      animalEntry("いわし", ["鰯"]),
+      animalEntry("いっかく", ["一角", "いっかくじら"]),
+      animalEntry("いそぎんちゃく", ["磯巾着"]),
+      animalEntry("いえばと", ["家鳩"]),
+      animalEntry("いとまきえい", []),
+      animalEntry("いんどぞう", ["インド象", "インドぞう"]),
     ],
   },
   {
     kana: "う",
     items: [
-      { key: "うま", ok: ["うま", "馬", "ウマ"] },
-      { key: "うさぎ", ok: ["うさぎ", "兎", "ウサギ"] },
-      { key: "うし", ok: ["うし", "牛", "ウシ"] },
-      { key: "うみうし", ok: ["うみうし", "ウミウシ", "海牛"] },
+      animalEntry("うま", ["馬"]),
+      animalEntry("うさぎ", ["兎", "ウサギ"]),
+      animalEntry("うし", ["牛"]),
+      animalEntry("うみうし", ["海牛"]),
+      animalEntry("うぐいす", ["鶯"]),
+      animalEntry("うずら", ["鶉"]),
+      animalEntry("うなぎ", ["鰻"]),
+      animalEntry("うみへび", ["海蛇"]),
+      animalEntry("うわばみ", ["蟒"]),
+    ],
+  },
+  {
+    kana: "え",
+    items: [
+      animalEntry("えび", ["海老", "蝦"]),
+      animalEntry("えい", ["鱏", "エイ"]),
+      animalEntry("えぞしか", ["蝦夷鹿"]),
+      animalEntry("えむ", ["エミュー", "えみゅー"]),
+      animalEntry("えりまきとかげ", ["襟巻蜥蜴"]),
+      animalEntry("えんまこおろぎ", []),
     ],
   },
   {
     kana: "お",
     items: [
-      { key: "おおかみ", ok: ["おおかみ", "オオカミ", "狼"] },
-      { key: "おうむ", ok: ["おうむ", "オウム", "鸚鵡"] },
-      { key: "おらんうーたん", ok: ["おりんうーたん", "オランウータン", "おらんうーたん"] },
-      { key: "おかぴ", ok: ["おかぴ", "オカピ"] },
+      animalEntry("おおかみ", ["狼"]),
+      animalEntry("おうむ", ["鸚鵡"]),
+      animalEntry("おらんうーたん", ["オランウータン", "おりんうーたん"]),
+      animalEntry("おかぴ", []),
+      animalEntry("おおわし", ["大鷲"]),
+      animalEntry("おこぜ", ["虎魚"]),
+      animalEntry("おしどり", ["鴛鴦"]),
+      animalEntry("おおさんしょううお", ["大山椒魚"]),
     ],
   },
   {
     kana: "か",
     items: [
-      { key: "かめ", ok: ["かめ", "亀", "カメ"] },
-      { key: "かに", ok: ["かに", "蟹", "カニ"] },
-      { key: "かば", ok: ["かば", "カバ", "河馬"] },
-      { key: "かえる", ok: ["かえる", "カエル", "蛙"] },
-      { key: "からす", ok: ["からす", "カラス", "烏"] },
+      animalEntry("かめ", ["亀"]),
+      animalEntry("かに", ["蟹"]),
+      animalEntry("かば", ["河馬"]),
+      animalEntry("かえる", ["蛙"]),
+      animalEntry("からす", ["烏", "鴉"]),
+      animalEntry("かも", ["鴨"]),
+      animalEntry("かもめ", ["鴎"]),
+      animalEntry("かんがるー", ["カンガルー", "かんがるう"]),
+      animalEntry("かつお", ["鰹"]),
+      animalEntry("かたつむり", ["蝸牛"]),
+      animalEntry("かぶとむし", ["甲虫", "カブトムシ"]),
+      animalEntry("かわうそ", ["川獺"]),
+      animalEntry("かわせみ", ["川蝉"]),
     ],
   },
   {
     kana: "き",
     items: [
-      { key: "きつね", ok: ["きつね", "キツネ", "狐"] },
-      { key: "きりん", ok: ["きりん", "キリン", "麒麟"] },
-      { key: "きつつき", ok: ["きつつき", "キツツキ", "啄木鳥"] },
+      animalEntry("きつね", ["狐"]),
+      animalEntry("きりん", ["麒麟"]),
+      animalEntry("きつつき", ["啄木鳥"]),
+      animalEntry("きじ", ["雉"]),
+      animalEntry("きんぎょ", ["金魚"]),
+      animalEntry("きじばと", ["雉鳩"]),
+      animalEntry("きょうりゅう", ["恐竜"]),
     ],
   },
   {
     kana: "く",
     items: [
-      { key: "くま", ok: ["くま", "熊", "クマ"] },
-      { key: "くじら", ok: ["くじら", "クジラ", "鯨"] },
-      { key: "くじゃく", ok: ["くじゃく", "クジャク", "孔雀"] },
+      animalEntry("くま", ["熊"]),
+      animalEntry("くじら", ["鯨"]),
+      animalEntry("くじゃく", ["孔雀"]),
+      animalEntry("くまげら", []),
+      animalEntry("くらげ", ["海月"]),
+      animalEntry("くも", ["蜘蛛"]),
+      animalEntry("くるまえび", ["車海老"]),
+      animalEntry("くろまぐろ", ["黒鮪"]),
+    ],
+  },
+  {
+    kana: "け",
+    items: [
+      animalEntry("けむし", ["毛虫"]),
+      animalEntry("けんさきいか", []),
+    ],
+  },
+  {
+    kana: "こ",
+    items: [
+      animalEntry("こあら", ["コアラ", "こあら"]),
+      animalEntry("こぶた", ["子豚"]),
+      animalEntry("こねこ", ["子猫"]),
+      animalEntry("こいぬ", ["子犬"]),
+      animalEntry("こいわし", []),
+      animalEntry("こおろぎ", ["蟋蟀"]),
+      animalEntry("こうもり", ["蝙蝠"]),
+      animalEntry("ごりら", ["ゴリラ"]),
+      animalEntry("こじか", ["子鹿"]),
+      animalEntry("こんごういんこ", ["金剛鸚哥"]),
     ],
   },
   {
     kana: "さ",
     items: [
-      { key: "さる", ok: ["さる", "猿", "サル"] },
-      { key: "さい", ok: ["さい", "サイ", "犀"] },
-      { key: "さめ", ok: ["さめ", "サメ", "鮫"] },
+      animalEntry("さる", ["猿"]),
+      animalEntry("さい", ["犀"]),
+      animalEntry("さめ", ["鮫"]),
+      animalEntry("さけ", ["鮭"]),
+      animalEntry("さくらます", ["桜鱒"]),
+      animalEntry("さんま", ["秋刀魚"]),
+      animalEntry("さんしょううお", ["山椒魚"]),
+      animalEntry("ざりがに", ["ザリガニ"]),
     ],
   },
   {
     kana: "し",
     items: [
-      { key: "しか", ok: ["しか", "シカ", "鹿"] },
-      { key: "しまうま", ok: ["しまうま", "シマウマ", "縞馬"] },
-      { key: "しろくま", ok: ["しろくま", "シロクマ", "北極熊"] },
-      { key: "しし", ok: ["しし", "シシ", "獅子"] },
+      animalEntry("しか", ["鹿"]),
+      animalEntry("しまうま", ["縞馬"]),
+      animalEntry("しろくま", ["北極熊", "白熊"]),
+      animalEntry("しし", ["獅子"]),
+      animalEntry("しじみ", ["蜆"]),
+      animalEntry("しゃち", ["鯱"]),
+      animalEntry("しろへび", ["白蛇"]),
+    ],
+  },
+  {
+    kana: "す",
+    items: [
+      animalEntry("すずめ", ["雀"]),
+      animalEntry("すずめばち", ["雀蜂"]),
+      animalEntry("すかんく", ["スカンク"]),
+      animalEntry("すっぽん", ["鼈"]),
+      animalEntry("すずき", ["鱸"]),
+    ],
+  },
+  {
+    kana: "せ",
+    items: [
+      animalEntry("せみ", ["蝉"]),
+      animalEntry("せきれい", ["鶺鴒"]),
+      animalEntry("せいうち", ["海象"]),
+      animalEntry("せんざんこう", ["穿山甲"]),
     ],
   },
   {
     kana: "た",
     items: [
-      { key: "たぬき", ok: ["たぬき", "タヌキ", "狸"] },
-      { key: "たこ", ok: ["たこ", "タコ", "蛸"] },
-      { key: "たか", ok: ["たか", "タカ", "鷹"] },
+      animalEntry("たぬき", ["狸"]),
+      animalEntry("たこ", ["蛸", "章魚"]),
+      animalEntry("たか", ["鷹"]),
+      animalEntry("たい", ["鯛"]),
+      animalEntry("たつのおとしご", ["竜の落とし子"]),
+      animalEntry("たら", ["鱈"]),
+      animalEntry("たんちょう", ["丹頂", "たんちょうづる"]),
+    ],
+  },
+  {
+    kana: "ち",
+    items: [
+      animalEntry("ちんぱんじー", ["チンパンジー", "ちんぱんじい"]),
+      animalEntry("ちた", ["チーター", "ちーたー"]),
+      animalEntry("ちどり", ["千鳥"]),
+      animalEntry("ちょう", ["蝶", "ちょうちょ", "蝶々"]),
+    ],
+  },
+  {
+    kana: "つ",
+    items: [
+      animalEntry("つる", ["鶴"]),
+      animalEntry("つばめ", ["燕"]),
+      animalEntry("つちのこ", ["槌の子"]),
+      animalEntry("つぐみ", ["鶫"]),
+    ],
+  },
+  {
+    kana: "と",
+    items: [
+      animalEntry("とら", ["虎"]),
+      animalEntry("とんび", ["鳶"]),
+      animalEntry("とかげ", ["蜥蜴"]),
+      animalEntry("とど", ["魹"]),
+      animalEntry("とんぼ", ["蜻蛉"]),
+    ],
+  },
+  {
+    kana: "な",
+    items: [
+      animalEntry("なまけもの", ["樹懶"]),
+      animalEntry("なまず", ["鯰"]),
+      animalEntry("なまこ", ["海鼠"]),
+      animalEntry("なめくじ", ["蛞蝓"]),
+    ],
+  },
+  {
+    kana: "に",
+    items: [
+      animalEntry("にわとり", ["鶏"]),
+      animalEntry("にしきごい", ["錦鯉"]),
+      animalEntry("にしん", ["鰊"]),
+      animalEntry("にほんざる", ["日本猿"]),
+    ],
+  },
+  {
+    kana: "ね",
+    items: [
+      animalEntry("ねこ", ["猫"]),
+      animalEntry("ねずみ", ["鼠"]),
+      animalEntry("ねったいぎょ", ["熱帯魚"]),
+      animalEntry("ねこざめ", []),
+    ],
+  },
+  {
+    kana: "の",
+    items: [
+      animalEntry("のうさぎ", ["野兎"]),
+      animalEntry("のねずみ", ["野鼠"]),
+      animalEntry("のこぎりざめ", ["鋸鮫"]),
+      animalEntry("のらねこ", ["野良猫"]),
+    ],
+  },
+  {
+    kana: "は",
+    items: [
+      animalEntry("はと", ["鳩"]),
+      animalEntry("はち", ["蜂"]),
+      animalEntry("はむすたー", ["ハムスター"]),
+      animalEntry("はくちょう", ["白鳥"]),
+      animalEntry("はえ", ["蠅", "ハエ"]),
+      animalEntry("はりねずみ", ["ハリネズミ", "針鼠"]),
+      animalEntry("はんざき", ["山椒魚"]),
+    ],
+  },
+  {
+    kana: "ひ",
+    items: [
+      animalEntry("ひつじ", ["羊"]),
+      animalEntry("ひよこ", ["雛"]),
+      animalEntry("ひぐま", ["羆", "ヒグマ"]),
+      animalEntry("ひらめ", ["鮃"]),
+      animalEntry("ひよどり", ["鵯"]),
+      animalEntry("ひきがえる", ["蟇蛙"]),
+    ],
+  },
+  {
+    kana: "ふ",
+    items: [
+      animalEntry("ふくろう", ["梟"]),
+      animalEntry("ふぐ", ["河豚"]),
+      animalEntry("ふんころがし", ["糞転がし"]),
+      animalEntry("ふらみんご", ["フラミンゴ"]),
+      animalEntry("ふじつぼ", ["藤壺"]),
+    ],
+  },
+  {
+    kana: "へ",
+    items: [
+      animalEntry("へび", ["蛇"]),
+      animalEntry("ぺんぎん", ["ペンギン"]),
+      animalEntry("へらぶな", ["箆鮒"]),
+    ],
+  },
+  {
+    kana: "ほ",
+    items: [
+      animalEntry("ほらがい", ["法螺貝"]),
+      animalEntry("ほたる", ["蛍"]),
+      animalEntry("ほっきょくぐま", ["北極熊", "しろくま"]),
+      animalEntry("ほたて", ["帆立"]),
+    ],
+  },
+  {
+    kana: "ま",
+    items: [
+      animalEntry("まぐろ", ["鮪"]),
+      animalEntry("まむし", ["蝮"]),
+      animalEntry("まんぼう", ["翻車魚"]),
+      animalEntry("まがも", ["真鴨"]),
+      animalEntry("まだい", ["真鯛"]),
+    ],
+  },
+  {
+    kana: "み",
+    items: [
+      animalEntry("みみず", ["蚯蚓"]),
+      animalEntry("みつばち", ["蜜蜂"]),
+      animalEntry("みずだこ", ["水蛸"]),
+    ],
+  },
+  {
+    kana: "む",
+    items: [
+      animalEntry("むかで", ["百足"]),
+      animalEntry("むし", ["虫"]),
+      animalEntry("むささび", ["鼯鼠"]),
+    ],
+  },
+  {
+    kana: "め",
+    items: [
+      animalEntry("めだか", ["目高", "メダカ"]),
+      animalEntry("めじろ", ["目白"]),
+      animalEntry("めんふくろう", ["面梟"]),
+    ],
+  },
+  {
+    kana: "も",
+    items: [
+      animalEntry("もるもっと", ["モルモット"]),
+      animalEntry("もず", ["鵙"]),
+      animalEntry("もぐら", ["土竜"]),
+      animalEntry("もんしろちょう", ["紋白蝶"]),
+    ],
+  },
+  {
+    kana: "や",
+    items: [
+      animalEntry("やぎ", ["山羊"]),
+      animalEntry("やまあらし", ["山荒"]),
+      animalEntry("やもり", ["守宮"]),
+      animalEntry("やまかがし", ["山棟蛇"]),
+      animalEntry("やまどり", ["山鳥"]),
+    ],
+  },
+  {
+    kana: "ゆ",
+    items: [
+      animalEntry("ゆりかもめ", ["百合鴎"]),
+    ],
+  },
+  {
+    kana: "よ",
+    items: [
+      animalEntry("よたか", ["夜鷹"]),
+    ],
+  },
+  {
+    kana: "ら",
+    items: [
+      animalEntry("らくだ", ["駱駝"]),
+      animalEntry("らいおん", ["ライオン", "獅子"]),
+      animalEntry("らっこ", ["海獺"]),
+      animalEntry("らんちゅう", ["蘭鋳"]),
+    ],
+  },
+  {
+    kana: "り",
+    items: [
+      animalEntry("りす", ["栗鼠"]),
+      animalEntry("りゅう", ["竜", "龍"]),
+    ],
+  },
+  {
+    kana: "る",
+    items: [
+      animalEntry("るりかけす", ["瑠璃懸巣"]),
+    ],
+  },
+  {
+    kana: "れ",
+    items: [
+      animalEntry("れっさーぱんだ", ["レッサーパンダ"]),
+    ],
+  },
+  {
+    kana: "ろ",
+    items: [
+      animalEntry("ろば", ["驢馬"]),
+    ],
+  },
+  {
+    kana: "わ",
+    items: [
+      animalEntry("わし", ["鷲"]),
+      animalEntry("わに", ["鰐"]),
+      animalEntry("わかさぎ", ["公魚"]),
+      animalEntry("わたりがに", ["渡り蟹"]),
     ],
   },
 ];
