@@ -2305,6 +2305,16 @@ a.notice.check-cta {
   margin: 0 0 14px;
 }
 
+.check-hint {
+  background: #fff4c2;
+  color: #5a4030;
+  font-weight: 700;
+  line-height: 1.5;
+  padding: 12px 14px;
+  border-radius: 14px;
+  margin: 0 0 12px;
+}
+
 .quiz-show .hint-btn {
   color: #ffe07a;
 }
