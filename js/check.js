@@ -110,7 +110,7 @@ function startCheck() {
     words: CHECK_WORDS.slice(),
     mood: mood.id,
     moodPhoto: shuffleList((mood.photos || [mood.photo]).slice())[0],
-    abbrev: shuffleList(ABBREV_QUIZ)[0],
+    abbrev: shuffleList(ABBREV_QUIZ.filter((q) => (q.level || "easy") === "easy"))[0] || ABBREV_QUIZ[0],
     shape: [0, 1, 3],
     shapePick: null,
     animalSet: pickAnimalSet(),
@@ -334,9 +334,9 @@ function renderQSpace(game) {
   `;
 }
 
-function hintBlock(text) {
+function hintBlock(text, label) {
   if (!text) return "";
-  return `<button class="hint-btn" type="button" data-hint>ヒントを見る</button>
+  return `<button class="hint-btn" type="button" data-hint>${escapeHtml(label || "ヒントを見る")}</button>
     <p class="hint-box" hidden data-hint-box>${escapeHtml(text)}</p>`;
 }
 
@@ -356,9 +356,10 @@ function renderQMeaning(game) {
   const q = game.abbrev || ABBREV_QUIZ[0];
   return `
     <h1 class="theme">「${escapeHtml(q.short)}」は何の略？</h1>
-    <p class="help">もとのことばを、自分で書いてください。</p>
-    <input class="pill" data-lang-in maxlength="24" placeholder="もとのことば" />
-    ${hintBlock(q.hint)}
+    <p class="help">もとのことばを、自分で書いてください。近くても大丈夫です。</p>
+    <p class="check-hint">ヒント：${escapeHtml(q.hint)}</p>
+    <input class="pill" data-lang-in maxlength="40" placeholder="もとのことば" value="${escapeHtml(game.lang || "")}" />
+    ${hintBlock(q.hint2, "もっとくわしいヒント")}
     <button class="primary" type="button" data-check-ok>これで答える</button>
   `;
 }
