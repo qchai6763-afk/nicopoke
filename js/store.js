@@ -67,6 +67,39 @@ function catForTheme(theme) {
   return SLOT_CATS.find((c) => c.items.includes(theme)) || SLOT_CATS[0];
 }
 
+function themeFields(theme) {
+  const cat = catForTheme(theme);
+  return {
+    theme,
+    themeOptions: [theme],
+    category: cat.id,
+    categoryLabel: cat.label,
+    categoryEmoji: cat.emoji,
+  };
+}
+
+function themesForMembers(memberIds, date, taken) {
+  const used = new Set(taken || []);
+  const out = {};
+  memberIds
+    .slice()
+    .sort()
+    .forEach((id) => {
+      const start = hashString(`${id}:${date}:own-theme`) % THEMES.length;
+      let theme = THEMES[start];
+      for (let i = 0; i < THEMES.length; i += 1) {
+        const candidate = THEMES[(start + i) % THEMES.length];
+        if (!used.has(candidate)) {
+          theme = candidate;
+          break;
+        }
+      }
+      used.add(theme);
+      out[id] = theme;
+    });
+  return out;
+}
+
 function groupThemeSlot(groupId, dateKey) {
   const h = hashString(`${groupId}:${dateKey}:shared-theme`);
   const theme = THEMES[h % THEMES.length];
@@ -111,6 +144,9 @@ function emptyState() {
     comments: [],
     likes: [],
     talkReacts: [],
+    fitVotes: [],
+    extraGrants: [],
+    rankWins: [],
     messages: [],
   };
 }
@@ -133,6 +169,9 @@ function load() {
     if (!Array.isArray(parsed.messages)) parsed.messages = [];
     if (!Array.isArray(parsed.moods)) parsed.moods = [];
     if (!Array.isArray(parsed.talkReacts)) parsed.talkReacts = [];
+    if (!Array.isArray(parsed.fitVotes)) parsed.fitVotes = [];
+    if (!Array.isArray(parsed.extraGrants)) parsed.extraGrants = [];
+    if (!Array.isArray(parsed.rankWins)) parsed.rankWins = [];
     parsed.users.forEach((u) => {
       delete u.generation;
       delete u.role;
@@ -341,6 +380,9 @@ function snapshotForGroup(groupId) {
     comments: state.comments.filter((c) => questIds.has(c.questId)),
     likes: (state.likes || []).filter((l) => questIds.has(l.questId)),
     talkReacts: (state.talkReacts || []).filter((r) => questIds.has(r.questId)),
+    fitVotes: (state.fitVotes || []).filter((v) => questIds.has(v.questId)),
+    extraGrants: (state.extraGrants || []).filter((g) => g.groupId === groupId),
+    rankWins: (state.rankWins || []).filter((w) => w.groupId === groupId),
   };
 }
 
@@ -485,6 +527,12 @@ function mergeSnapshot(snap) {
   (snap.likes || []).forEach((l) => upsertById(state.likes, l));
   if (!state.talkReacts) state.talkReacts = [];
   (snap.talkReacts || []).forEach((r) => upsertById(state.talkReacts, r));
+  if (!state.fitVotes) state.fitVotes = [];
+  (snap.fitVotes || []).forEach((v) => upsertById(state.fitVotes, v));
+  if (!state.extraGrants) state.extraGrants = [];
+  (snap.extraGrants || []).forEach((g) => upsertById(state.extraGrants, g));
+  if (!state.rankWins) state.rankWins = [];
+  (snap.rankWins || []).forEach((w) => upsertById(state.rankWins, w));
   const after = JSON.stringify(snapshotForGroup(incoming.id) || {});
   return before !== after;
 }
@@ -505,6 +553,9 @@ function toLightSnapshot(snap) {
     comments: snap.comments || [],
     likes: snap.likes || [],
     talkReacts: snap.talkReacts || [],
+    fitVotes: snap.fitVotes || [],
+    extraGrants: snap.extraGrants || [],
+    rankWins: snap.rankWins || [],
   };
 }
 
@@ -732,38 +783,42 @@ function addMemberToCurrentGroup({ name }) {
 
 function ensureTodayQuests(groupId) {
   const date = todayKey();
-  const slot = groupThemeSlot(groupId, date);
   const members = groupMembers(groupId);
+  const taken = new Set();
+  const openIds = [];
   members.forEach((member) => {
     const exists = state.quests.find(
-      (q) => q.groupId === groupId && q.userId === member.id && q.date === date
+      (q) => q.groupId === groupId && q.userId === member.id && q.date === date && !q.bonus
     );
+    if (exists && isPosted(exists) && exists.theme) taken.add(exists.theme);
+    else openIds.push(member.id);
+  });
+  const plan = themesForMembers(openIds, date, taken);
+  members.forEach((member) => {
+    const exists = state.quests.find(
+      (q) => q.groupId === groupId && q.userId === member.id && q.date === date && !q.bonus
+    );
+    const fields = themeFields(plan[member.id] || slotFromHash(member.id, date).theme);
     if (!exists) {
-        const questId = `q-${member.id}-${date}`;
-        state.quests.push({
-          id: questId,
-          groupId,
-          userId: member.id,
-          date,
-          theme: slot.theme,
-          themeOptions: [slot.theme],
-          category: slot.category,
-          categoryLabel: slot.categoryLabel,
-          categoryEmoji: slot.categoryEmoji,
-          themeAt: Date.now(),
-          rerollsUsed: 0,
-          photoDataUrl: "",
-          caption: "",
-          revealed: false,
-          postedAt: null,
-        });
-    } else if (!isPosted(exists) && exists.theme !== slot.theme) {
-      exists.theme = slot.theme;
-      exists.category = slot.category;
-      exists.categoryLabel = slot.categoryLabel;
-      exists.categoryEmoji = slot.categoryEmoji;
-      exists.themeOptions = [slot.theme];
-      exists.themeAt = Date.now();
+        state.quests.push(
+          Object.assign(
+            {
+              id: `q-${member.id}-${date}`,
+              groupId,
+              userId: member.id,
+              date,
+              themeAt: Date.now(),
+              rerollsUsed: 0,
+              photoDataUrl: "",
+              caption: "",
+              revealed: false,
+              postedAt: null,
+            },
+            fields
+          )
+        );
+    } else if (!isPosted(exists) && exists.theme !== fields.theme) {
+      Object.assign(exists, fields, { themeAt: Date.now() });
     }
   });
   persist();
@@ -793,15 +848,17 @@ function isPosted(quest) {
 
 function todayQuestFor(userId, groupId) {
   ensureTodayQuests(groupId);
-  return (
-    state.quests.find(
-      (q) => q.userId === userId && q.groupId === groupId && q.date === todayKey()
-    ) || null
+  const list = state.quests.filter(
+    (q) => q.userId === userId && q.groupId === groupId && q.date === todayKey()
   );
+  return list.find((q) => !isPosted(q)) || list.find((q) => !q.bonus) || list[0] || null;
 }
 
 function hasPostedToday(userId, groupId) {
-  return isPosted(todayQuestFor(userId, groupId));
+  ensureTodayQuests(groupId);
+  return state.quests.some(
+    (q) => q.userId === userId && q.groupId === groupId && q.date === todayKey() && isPosted(q)
+  );
 }
 
 function randomTheme(except) {
@@ -989,20 +1046,202 @@ function themeTrio(quest) {
 
 function guessChoices(quest) {
   if (!quest) return [];
-  const decoys = pickFromPool(
-    THEMES.filter((t) => t !== quest.theme),
-    2,
-    quest.id || quest.theme
-  );
+  const near = (THEME_LOOKALIKES[quest.theme] || []).filter((t) => t !== quest.theme && THEMES.includes(t));
+  const decoys = pickFromPool(near.length ? near : THEMES.filter((t) => t !== quest.theme), 5, `${quest.id || quest.theme}:near`);
   return shuffleSeeded([quest.theme].concat(decoys), `${quest.id || quest.theme}:guess`);
+}
+
+function remainingChoices(quest, userId) {
+  const all = guessChoices(quest);
+  const wrong = new Set(
+    guessesFor(quest.id)
+      .filter((g) => g.userId === userId && !g.correct)
+      .map((g) => g.text)
+  );
+  return all.filter((t) => !wrong.has(t));
+}
+
+function submitChoiceGuess(questId, text) {
+  const user = currentUser();
+  const quest = getQuest(questId);
+  const pick = String(text || "");
+  if (!user || !quest || !isPosted(quest) || quest.userId === user.id) return null;
+  if (guessedRight(questId, user.id)) return null;
+  if (!remainingChoices(quest, user.id).includes(pick)) return null;
+  const guess = {
+    id: makeId("guess"),
+    questId,
+    userId: user.id,
+    text: pick,
+    correct: pick === quest.theme,
+    at: Date.now(),
+  };
+  state.guesses.push(guess);
+  notify();
+  return guess;
+}
+
+function ownerMissCount(userId, groupId, date) {
+  return state.quests
+    .filter((q) => q.groupId === groupId && q.userId === userId && q.date === date && isPosted(q))
+    .reduce((n, q) => n + guessesFor(q.id).filter((g) => !g.correct).length, 0);
+}
+
+function dayRank(groupId, date) {
+  const rows = groupMembers(groupId)
+    .map((member) => ({
+      user: member,
+      userId: member.id,
+      misses: ownerMissCount(member.id, groupId, date),
+      posted: state.quests.some(
+        (q) => q.groupId === groupId && q.userId === member.id && q.date === date && isPosted(q)
+      ),
+    }))
+    .filter((row) => row.posted);
+  const scores = Array.from(new Set(rows.map((row) => row.misses))).sort((a, b) => b - a);
+  const ordered = [];
+  scores.forEach((score) => {
+    const tied = rows.filter((row) => row.misses === score);
+    shuffleSeeded(
+      tied.map((row) => row.userId),
+      `${groupId}:${date}:tie:${score}`
+    ).forEach((id) => ordered.push(tied.find((row) => row.userId === id)));
+  });
+  const leader = ordered[0] && ordered[0].misses > 0 ? ordered[0] : null;
+  return { rows: ordered, leader };
+}
+
+function settlePastRanks(groupId) {
+  const today = todayKey();
+  if (!state.rankWins) state.rankWins = [];
+  const dates = Array.from(
+    new Set(
+      state.quests
+        .filter((q) => q.groupId === groupId && isPosted(q) && q.date && q.date < today)
+        .map((q) => q.date)
+    )
+  );
+  let changed = false;
+  dates.forEach((date) => {
+    const id = `win-${groupId}-${date}`;
+    if (state.rankWins.some((w) => w.id === id)) return;
+    const leader = dayRank(groupId, date).leader;
+    if (!leader) return;
+    state.rankWins.push({ id, groupId, date, userId: leader.userId });
+    changed = true;
+  });
+  if (changed) persist();
+}
+
+function winCount(groupId, userId) {
+  settlePastRanks(groupId);
+  return (state.rankWins || []).filter((w) => w.groupId === groupId && w.userId === userId).length;
+}
+
+function grantExtraPhoto(toUserId) {
+  const user = currentUser();
+  const group = currentGroup();
+  const date = todayKey();
+  if (!user || !group || !toUserId || toUserId === user.id) return { ok: false };
+  const leader = dayRank(group.id, date).leader;
+  if (!leader || leader.userId !== user.id) return { ok: false };
+  if (!state.extraGrants) state.extraGrants = [];
+  if (state.extraGrants.some((g) => g.groupId === group.id && g.date === date && g.fromUserId === user.id)) {
+    return { ok: false };
+  }
+  const taken = new Set(
+    state.quests.filter((q) => q.groupId === group.id && q.date === date).map((q) => q.theme)
+  );
+  const theme = themesForMembers([toUserId], `${date}:bonus`, taken)[toUserId];
+  const fields = themeFields(theme);
+  const questId = `q-${toUserId}-${date}-b`;
+  if (!state.quests.some((q) => q.id === questId)) {
+    state.quests.push(
+      Object.assign(
+        {
+          id: questId,
+          groupId: group.id,
+          userId: toUserId,
+          date,
+          bonus: true,
+          themeAt: Date.now(),
+          rerollsUsed: 0,
+          photoDataUrl: "",
+          caption: "",
+          revealed: false,
+          postedAt: null,
+        },
+        fields
+      )
+    );
+  }
+  state.extraGrants.push({
+    id: `extra-${group.id}-${date}-${toUserId}`,
+    groupId: group.id,
+    date,
+    fromUserId: user.id,
+    toUserId,
+    at: Date.now(),
+  });
+  notify();
+  return { ok: true };
+}
+
+function extraGrantToday(groupId, userId) {
+  const date = todayKey();
+  return (state.extraGrants || []).find((g) => g.groupId === groupId && g.date === date && g.toUserId === userId) || null;
+}
+
+function grantedExtraToday(groupId, fromUserId) {
+  const date = todayKey();
+  return (state.extraGrants || []).find((g) => g.groupId === groupId && g.date === date && g.fromUserId === fromUserId) || null;
 }
 
 function revealTheme(questId) {
   const user = currentUser();
   const quest = getQuest(questId);
-  if (!user || !quest || quest.userId !== user.id || !isPosted(quest)) return;
+  const group = currentGroup();
+  if (!user || !quest || !group || !isPosted(quest) || quest.groupId !== group.id) return;
+  if (quest.revealed) return;
   quest.revealedAt = Math.max(Date.now(), quest.postedAt || 0);
   quest.revealed = true;
+  notify();
+}
+
+function fitVotesFor(questId) {
+  const quest = getQuest(questId);
+  const since = (quest && quest.postedAt) || 0;
+  const map = {};
+  (state.fitVotes || []).forEach((v) => {
+    if (!v || v.questId !== questId || stamp(v.at) < since) return;
+    const prev = map[v.userId];
+    if (!prev || stamp(v.at) > stamp(prev.at)) map[v.userId] = v;
+  });
+  return Object.values(map);
+}
+
+function setFitVote(questId, choice) {
+  const user = currentUser();
+  const quest = getQuest(questId);
+  if (!user || !quest || !isPosted(quest) || !quest.revealed || quest.userId === user.id) return;
+  if (choice !== "yes" && choice !== "no") return;
+  if (!state.fitVotes) state.fitVotes = [];
+  const since = quest.postedAt || 0;
+  const i = state.fitVotes.findIndex((v) => v.questId === questId && v.userId === user.id && stamp(v.at) >= since);
+  if (i >= 0 && state.fitVotes[i].choice === choice) {
+    state.fitVotes.splice(i, 1);
+  } else if (i >= 0) {
+    state.fitVotes[i].choice = choice;
+    state.fitVotes[i].at = Date.now();
+  } else {
+    state.fitVotes.push({
+      id: makeId("fit"),
+      questId,
+      userId: user.id,
+      choice,
+      at: Date.now(),
+    });
+  }
   notify();
 }
 
@@ -1013,6 +1252,7 @@ function clearPost(quest, now) {
   quest.postedAt = null;
   quest.hasPhoto = false;
   quest.revealed = false;
+  quest.revealedAt = 0;
 }
 
 function deletePost(questId) {

@@ -158,7 +158,13 @@ function mergeSnapshots(existing, incoming) {
   (incoming.likes || []).forEach((l) => upsertById(likes, l));
   const talkReacts = (existing.talkReacts || []).slice();
   (incoming.talkReacts || []).forEach((r) => upsertById(talkReacts, r));
-  return { group, users, memberships, quests, guesses, comments, likes, talkReacts };
+  const fitVotes = (existing.fitVotes || []).slice();
+  (incoming.fitVotes || []).forEach((v) => upsertById(fitVotes, v));
+  const extraGrants = (existing.extraGrants || []).slice();
+  (incoming.extraGrants || []).forEach((g) => upsertById(extraGrants, g));
+  const rankWins = (existing.rankWins || []).slice();
+  (incoming.rankWins || []).forEach((w) => upsertById(rankWins, w));
+  return { group, users, memberships, quests, guesses, comments, likes, talkReacts, fitVotes, extraGrants, rankWins };
 }
 
 function parseGroup(data) {
