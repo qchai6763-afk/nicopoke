@@ -1085,12 +1085,14 @@ function looseMatch(guess, theme) {
 function guessIsClose(text, theme) {
   const guess = foldGuess(text);
   const target = foldGuess(theme);
-  if (!guess) return false;
+  if (!guess || !target) return false;
   if (guess === target) return true;
+  const named = THEMES.find((t) => foldGuess(t) === guess);
+  if (named && named !== theme) return false;
   if (!THEME_KEYWORDS[theme]) return looseMatch(guess, target);
   const mine = keywordScore(guess, theme);
   if (!mine) return false;
-  return THEMES.every((t) => t === theme || keywordScore(guess, t) <= mine);
+  return THEMES.every((t) => t === theme || keywordScore(guess, t) < mine);
 }
 
 function guessesFor(questId) {
