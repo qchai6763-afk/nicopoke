@@ -156,7 +156,9 @@ function mergeSnapshots(existing, incoming) {
   (incoming.comments || []).forEach((c) => upsertById(comments, c));
   const likes = (existing.likes || []).slice();
   (incoming.likes || []).forEach((l) => upsertById(likes, l));
-  return { group, users, memberships, quests, guesses, comments, likes };
+  const talkReacts = (existing.talkReacts || []).slice();
+  (incoming.talkReacts || []).forEach((r) => upsertById(talkReacts, r));
+  return { group, users, memberships, quests, guesses, comments, likes, talkReacts };
 }
 
 function parseGroup(data) {
