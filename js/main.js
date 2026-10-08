@@ -387,6 +387,14 @@ function renderToday() {
     return;
   }
   const quest = todayQuestFor(user.id, group.id);
+  if (!quest) {
+    app.innerHTML = chrome(
+      `<p class="help">今日のお題を用意できませんでした。一度ログアウトして、入り直してください。</p>`,
+      "today"
+    );
+    bindTop();
+    return;
+  }
   const posted = isPosted(quest);
   const streak = streakFor(user.id);
   const risk = streakAtRisk(user.id);
@@ -601,7 +609,7 @@ function postCard(quest, viewerId) {
            </div>`
         : "";
   const askedRows = !mine && posted ? asksFor(quest.id, viewerId) : [];
-  const askQuota = !mine && posted && !guessedRight(quest.id, viewerId) ? missCountFor(quest.id, viewerId) : 0;
+  const askQuota = !mine && posted && !quest.revealed && !guessedRight(quest.id, viewerId) ? missCountFor(quest.id, viewerId) : 0;
   const askedIds = {};
   askedRows.forEach((row) => {
     askedIds[row.questionId] = row;
@@ -1338,6 +1346,14 @@ async function enablePush() {
   const group = currentGroup();
   const user = currentUser();
   if (!group || !user) return;
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent || "");
+  const standalone =
+    window.navigator.standalone || window.matchMedia("(display-mode: standalone)").matches;
+  if (ios && !standalone) {
+    window.__pushMsg = "iPhoneでは、共有ボタンから「ホーム画面に追加」して、そのアイコンから開いてから通知をオンにしてください。";
+    render();
+    return;
+  }
   if (!window.Notification || !navigator.serviceWorker || !window.PushManager) {
     window.__pushMsg = "この端末では、閉じてからの通知はできません。";
     render();
