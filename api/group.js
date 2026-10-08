@@ -454,7 +454,11 @@ async function notifyNewPosts(store, existing, merged) {
   ((existing && existing.quests) || []).forEach((q) => {
     if (q && q.id && q.photoDataUrl) before[q.id] = true;
   });
-  const fresh = (merged.quests || []).filter((q) => q && q.photoDataUrl && !before[q.id]);
+  const fresh = (merged.quests || []).filter((q) => {
+    if (!q || !q.photoDataUrl || before[q.id]) return false;
+    const postedAt = Number(q.postedAt) || 0;
+    return postedAt > Date.now() - 15 * 60 * 1000;
+  });
   if (!fresh.length) return;
   const keys = await ensureVapid(store);
   webpush.setVapidDetails("mailto:nicopoke@example.com", keys.publicKey, keys.privateKey);
