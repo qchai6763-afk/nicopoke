@@ -137,6 +137,140 @@ const THEME_HINTS = {
   鏡に映った自分: "カメラに直接写っているのではなく、反射しています。",
 };
 
+const TALK_PROMPTS = {
+  face: {
+    q: "この顔、どう？",
+    buttons: [
+      { id: "like", label: "似てる" },
+      { id: "fun", label: "おもしろい" },
+      { id: "again", label: "もう一回" },
+    ],
+  },
+  talk: {
+    q: "みて、どう思う？",
+    buttons: [
+      { id: "nice", label: "いいねこれ" },
+      { id: "ask", label: "おしえて" },
+      { id: "wow", label: "すごい" },
+    ],
+  },
+};
+
+const TALK_PROMPT_THEMES = {
+  すっぱいものを食べた時の顔: {
+    q: "すっぱそう？",
+    buttons: [
+      { id: "sour", label: "すっぱそう" },
+      { id: "fun", label: "にやけてる" },
+      { id: "again", label: "もう一回" },
+    ],
+  },
+  まずいのを食べた時の顔: {
+    q: "まずそう？",
+    buttons: [
+      { id: "yuck", label: "まずそう" },
+      { id: "fun", label: "おもしろい" },
+      { id: "again", label: "もう一回" },
+    ],
+  },
+  キメ顔: {
+    q: "決まってる？",
+    buttons: [
+      { id: "cool", label: "キマってる" },
+      { id: "fun", label: "おもしろい" },
+      { id: "again", label: "もう一回" },
+    ],
+  },
+  あくびしている顔: {
+    q: "ねむそう？",
+    buttons: [
+      { id: "sleep", label: "ねむそう" },
+      { id: "yawn", label: "うつりそう" },
+      { id: "fun", label: "おもしろい" },
+    ],
+  },
+  眠い顔: {
+    q: "ねむそう？",
+    buttons: [
+      { id: "sleep", label: "ねむそう" },
+      { id: "fun", label: "おもしろい" },
+      { id: "again", label: "もう一回" },
+    ],
+  },
+  思い切り笑った顔: {
+    q: "つられた？",
+    buttons: [
+      { id: "laugh", label: "つられた" },
+      { id: "fun", label: "おもしろい" },
+      { id: "again", label: "もう一回" },
+    ],
+  },
+  びっくりした顔: {
+    q: "おどろいた？",
+    buttons: [
+      { id: "wow", label: "おどろいた" },
+      { id: "fun", label: "おもしろい" },
+      { id: "again", label: "もう一回" },
+    ],
+  },
+  ウインク: {
+    q: "どっちの目？",
+    buttons: [
+      { id: "fun", label: "かわいい" },
+      { id: "cool", label: "キマってる" },
+      { id: "again", label: "もう一回" },
+    ],
+  },
+  いま飲んでいるもの: {
+    q: "なに飲んでる？",
+    buttons: [
+      { id: "warm", label: "あったかそう" },
+      { id: "nice", label: "おいしそう" },
+      { id: "ask", label: "おしえて" },
+    ],
+  },
+  あたたかいもの: {
+    q: "ほかほか？",
+    buttons: [
+      { id: "warm", label: "あったかい" },
+      { id: "ask", label: "おしえて" },
+      { id: "wow", label: "いいな" },
+    ],
+  },
+  つめたいもの: {
+    q: "ひんやり？",
+    buttons: [
+      { id: "cold", label: "つめたい" },
+      { id: "ask", label: "おしえて" },
+      { id: "nice", label: "いいな" },
+    ],
+  },
+  今日の空: {
+    q: "今日の空は？",
+    buttons: [
+      { id: "nice", label: "きれい" },
+      { id: "wow", label: "すごい" },
+      { id: "ask", label: "いま何時？" },
+    ],
+  },
+  いまいる部屋: {
+    q: "どんなへや？",
+    buttons: [
+      { id: "nice", label: "ここちいい" },
+      { id: "ask", label: "おしえて" },
+      { id: "wow", label: "広い" },
+    ],
+  },
+  昔の写真: {
+    q: "いつごろ？",
+    buttons: [
+      { id: "ask", label: "おしえて" },
+      { id: "wow", label: "なつかしい" },
+      { id: "nice", label: "いい写真" },
+    ],
+  },
+};
+
 const ICONS = ["🌸", "🌞", "🍀", "☕", "📷", "🌙", "🐶", "🐱", "🍙", "🏠", "🌻", "📚", "🎹", "🚲", "🌊"];
 
 const USER_COLORS = ["#ff8a7a", "#7ec8a3", "#ffb347", "#8ecae6", "#c9a0dc", "#ff8fab"];

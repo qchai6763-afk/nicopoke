@@ -252,7 +252,7 @@ function personFields(prefix, defaults = {}) {
 function privacyListHtml() {
   return `
     <ul class="privacy-list">
-      <li>写真・一言コメント・名前・いいね・コメントは、グループの共有サーバーに保存されます。参加コードを知っている人は、これらを見られます。</li>
+      <li>写真・一言コメント・名前・いいね・返事ボタン・コメントは、グループの共有サーバーに保存されます。参加コードを知っている人は、これらを見られます。</li>
       <li>脳トレの記録と元気予報の結果は、このスマホの中だけに残ります。家族には送られません。</li>
       <li>写真に自分以外の人が写るときは、送る前にその人に聞いてください。</li>
       <li>送った写真は、日がたってもアルバムに残り、「思い出神経衰弱」のカードとしてグループのみんなに表示されます。</li>
@@ -499,6 +499,46 @@ function postCard(quest, viewerId) {
   const captionLine =
     posted && quest.caption ? `<p class="caption-line">一言「${escapeHtml(quest.caption)}」</p>` : "";
 
+  const prompt = talkPromptFor(quest);
+  const minePick = myTalkReact(quest.id, viewerId);
+  const byChoice = {};
+  latestTalkReacts(quest.id).forEach((r) => {
+    const u = userById(r.userId);
+    if (!u) return;
+    byChoice[r.choice] = byChoice[r.choice] || [];
+    byChoice[r.choice].push(u.shortName);
+  });
+  const talkSum = prompt.buttons
+    .map((b) => {
+      const names = byChoice[b.id] || [];
+      if (!names.length) return "";
+      return `${names.join("・")}が「${b.label}」`;
+    })
+    .filter(Boolean)
+    .join("　");
+  const talkAsk = posted
+    ? `<div class="talk-ask">
+         <p class="kicker">${escapeHtml(prompt.q)}</p>
+         <div class="talk-btns">
+           ${prompt.buttons
+             .map(
+               (b) =>
+                 `<button type="button" class="talk-btn ${
+                   minePick && minePick.choice === b.id ? "on" : ""
+                 }" data-talk-react="${quest.id}" data-talk-choice="${escapeHtml(b.id)}" ${
+                   mine ? "disabled" : ""
+                 }>${escapeHtml(b.label)}</button>`
+             )
+             .join("")}
+         </div>
+         ${
+           talkSum
+             ? `<p class="talk-sum">${escapeHtml(talkSum)}</p>`
+             : `<p class="help">${mine ? "家族がボタンで返事してくれます。" : "大きいボタンを押すだけで届きます。"}</p>`
+         }
+       </div>`
+    : "";
+
   const talkUi = posted
     ? `<div class="talk">
          <p class="kicker">おしゃべり</p>
@@ -544,6 +584,7 @@ function postCard(quest, viewerId) {
       <div class="frame">${media}</div>
       ${waitCopy}
       ${captionLine}
+      ${talkAsk}
       ${
         posted
           ? `<div class="react">
@@ -588,6 +629,9 @@ function bindFeedActions() {
   });
   app.querySelectorAll("[data-like]").forEach((btn) => {
     btn.addEventListener("click", () => toggleLike(btn.dataset.like));
+  });
+  app.querySelectorAll("[data-talk-react]").forEach((btn) => {
+    btn.addEventListener("click", () => setTalkReact(btn.dataset.talkReact, btn.dataset.talkChoice));
   });
   bindDeletePost(app);
   app.querySelectorAll("[data-toggle-comments]").forEach((btn) => {
@@ -668,9 +712,11 @@ function renderFeed() {
               ? groupThemeSlot(group.id, viewDate).theme
               : "";
         if (!label) return "";
+        const ask = talkPromptFor({ theme: label, category: catForTheme(label).id });
         return `<div class="day-theme">
           <p class="kicker">${viewDate === today ? "今日みんなのお題" : "この日のお題"}</p>
           <p class="day-theme-text">${escapeHtml(label)}</p>
+          <p class="day-theme-ask">みんなに聞くこと　${escapeHtml(ask.q)}</p>
         </div>`;
       })()}
       ${
@@ -916,7 +962,7 @@ function tutorialSlides() {
       img: "img/brain-intro-memory.png",
       alt: "家族の写真カードのイラスト",
       title: "今日の一枚を送る",
-      text: "下の「今日」から、みんな同じお題で写真を送ります。家族の投稿は「家族」で見て、おしゃべりできます。",
+      text: "下の「今日」から、みんな同じお題で写真を送ります。家族の写真の下の大きいボタンを押すと、気持ちが届きます。",
     },
     {
       img: "img/brain-intro-order.png",

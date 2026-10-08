@@ -110,6 +110,7 @@ function emptyState() {
     guesses: [],
     comments: [],
     likes: [],
+    talkReacts: [],
     messages: [],
   };
 }
@@ -131,6 +132,7 @@ function load() {
     if (!Array.isArray(parsed.comments)) parsed.comments = [];
     if (!Array.isArray(parsed.messages)) parsed.messages = [];
     if (!Array.isArray(parsed.moods)) parsed.moods = [];
+    if (!Array.isArray(parsed.talkReacts)) parsed.talkReacts = [];
     parsed.users.forEach((u) => {
       delete u.generation;
       delete u.role;
@@ -338,6 +340,7 @@ function snapshotForGroup(groupId) {
     guesses: state.guesses.filter((g) => questIds.has(g.questId)),
     comments: state.comments.filter((c) => questIds.has(c.questId)),
     likes: (state.likes || []).filter((l) => questIds.has(l.questId)),
+    talkReacts: (state.talkReacts || []).filter((r) => questIds.has(r.questId)),
   };
 }
 
@@ -480,6 +483,8 @@ function mergeSnapshot(snap) {
   (snap.comments || []).forEach((c) => upsertById(state.comments, c));
   if (!state.likes) state.likes = [];
   (snap.likes || []).forEach((l) => upsertById(state.likes, l));
+  if (!state.talkReacts) state.talkReacts = [];
+  (snap.talkReacts || []).forEach((r) => upsertById(state.talkReacts, r));
   const after = JSON.stringify(snapshotForGroup(incoming.id) || {});
   return before !== after;
 }
@@ -499,6 +504,7 @@ function toLightSnapshot(snap) {
     guesses: snap.guesses || [],
     comments: snap.comments || [],
     likes: snap.likes || [],
+    talkReacts: snap.talkReacts || [],
   };
 }
 
@@ -1184,6 +1190,54 @@ function likeCount(questId) {
 
 function hasLiked(questId, userId) {
   return likesFor(questId).some((l) => l.userId === userId);
+}
+
+function talkPromptFor(quest) {
+  if (!quest) return TALK_PROMPTS.talk;
+  if (TALK_PROMPT_THEMES[quest.theme]) return TALK_PROMPT_THEMES[quest.theme];
+  if (quest.category && TALK_PROMPTS[quest.category]) return TALK_PROMPTS[quest.category];
+  const cat = catForTheme(quest.theme);
+  return TALK_PROMPTS[cat && cat.id] || TALK_PROMPTS.talk;
+}
+
+function talkReactsFor(questId) {
+  return (state.talkReacts || []).filter((r) => r.questId === questId);
+}
+
+function latestTalkReacts(questId) {
+  const map = {};
+  talkReactsFor(questId).forEach((r) => {
+    const prev = map[r.userId];
+    if (!prev || stamp(r.at) > stamp(prev.at)) map[r.userId] = r;
+  });
+  return Object.values(map);
+}
+
+function myTalkReact(questId, userId) {
+  return latestTalkReacts(questId).find((r) => r.userId === userId) || null;
+}
+
+function setTalkReact(questId, choiceId) {
+  const user = currentUser();
+  const quest = getQuest(questId);
+  if (!user || !quest || !isPosted(quest) || quest.userId === user.id) return;
+  if (!state.talkReacts) state.talkReacts = [];
+  const i = state.talkReacts.findIndex((r) => r.questId === questId && r.userId === user.id);
+  if (i >= 0 && state.talkReacts[i].choice === choiceId) {
+    state.talkReacts.splice(i, 1);
+  } else if (i >= 0) {
+    state.talkReacts[i].choice = choiceId;
+    state.talkReacts[i].at = Date.now();
+  } else {
+    state.talkReacts.push({
+      id: makeId("talk"),
+      questId,
+      userId: user.id,
+      choice: choiceId,
+      at: Date.now(),
+    });
+  }
+  notify();
 }
 
 function toggleLike(questId) {
