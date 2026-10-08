@@ -869,6 +869,24 @@ a.ghost {
   margin: 0 0 24px;
 }
 
+.day-theme {
+  background: #fff4c2;
+  border: 3px solid #ffd0dc;
+  border-radius: 22px;
+  padding: 14px 16px;
+  margin: 0 0 16px;
+}
+
+.day-theme-text {
+  margin: 4px 0 0;
+  font-size: 1.2rem;
+  font-weight: 900;
+}
+
+.talk .kicker {
+  margin: 0 0 8px;
+}
+
 .log-kicker {
   margin-top: 28px;
 }

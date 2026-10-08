@@ -53,17 +53,31 @@ function photoIsLive(quest, deletedAt) {
   return stamp(quest.postedAt) > stamp(deletedAt);
 }
 
+function applyThemeFields(base, src) {
+  return Object.assign({}, base, {
+    theme: src.theme,
+    themeOptions: src.themeOptions,
+    category: src.category,
+    categoryLabel: src.categoryLabel,
+    categoryEmoji: src.categoryEmoji,
+    themeAt: Math.max(stamp(base.themeAt), stamp(src.themeAt)),
+  });
+}
+
 function pickQuest(local, incoming) {
   const deletedAt = Math.max(stamp(local.deletedAt), stamp(incoming.deletedAt));
   const localLive = photoIsLive(local, deletedAt);
   const incomingLive = photoIsLive(incoming, deletedAt);
   if (incomingLive && !localLive) return incoming;
   if (localLive && !incomingLive) {
-    return Object.assign({}, incoming, {
-      photoDataUrl: local.photoDataUrl,
-      caption: incoming.caption || local.caption,
-      postedAt: stamp(local.postedAt) || stamp(incoming.postedAt),
-    });
+    return applyThemeFields(
+      Object.assign({}, incoming, {
+        photoDataUrl: local.photoDataUrl,
+        caption: incoming.caption || local.caption,
+        postedAt: stamp(local.postedAt) || stamp(incoming.postedAt),
+      }),
+      local
+    );
   }
   if (!localLive && !incomingLive && deletedAt) {
     const base = stamp(incoming.postedAt) > stamp(local.postedAt) ? incoming : local;
@@ -75,10 +89,11 @@ function pickQuest(local, incoming) {
       deletedAt,
     });
   }
-  if (stamp(incoming.postedAt) > stamp(local.postedAt)) return incoming;
-  return Object.assign({}, local, incoming, {
-    photoDataUrl: localLive ? local.photoDataUrl : incoming.photoDataUrl,
-  });
+  if (localLive && incomingLive) {
+    return stamp(incoming.postedAt) > stamp(local.postedAt) ? incoming : local;
+  }
+  const themeSrc = stamp(incoming.themeAt) >= stamp(local.themeAt) ? incoming : local;
+  return applyThemeFields(Object.assign({}, themeSrc), themeSrc);
 }
 
 function settleQuest(quest, a, b) {

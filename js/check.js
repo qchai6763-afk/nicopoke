@@ -93,9 +93,11 @@ function shapeTiles(cells, highlight, size = 3, extraClass = "") {
 
 function pickAnimalSet() {
   const user = currentUser();
-  const dayPick = hashString(`${todayKey()}:${(user && user.id) || "x"}:animal`) % ANIMAL_SETS.length;
+  const usable = ANIMAL_SETS.filter((s) => (s.items || []).length >= 4);
+  const pool = usable.length ? usable : ANIMAL_SETS;
+  const dayPick = hashString(`${todayKey()}:${(user && user.id) || "x"}:animal`) % pool.length;
   const retake = Boolean(window.__check && window.__check.animalSet);
-  return retake ? shuffleList(ANIMAL_SETS)[0] : ANIMAL_SETS[dayPick];
+  return retake ? shuffleList(pool)[0] : pool[dayPick];
 }
 
 function startCheck() {
@@ -290,13 +292,13 @@ function renderQLang(game) {
   }
   return `
     <h1 class="theme">「${escapeHtml(set.kana)}」から始まる<br />動物を 2つ書いてください</h1>
-    <p class="help">選択肢はありません。思い出したなまえを、2つ自分で書いてください。</p>
+    <p class="help">選択肢はありません。よく知っている動物で大丈夫です。2つ自分で書いてください。</p>
     <p class="check-lab">1つ目</p>
-    <input class="pill nazo-in" data-lang-in maxlength="12" placeholder="なまえを書く" value="${escapeHtml(
+    <input class="pill nazo-in" data-lang-in maxlength="20" placeholder="なまえを書く" value="${escapeHtml(
       game.lang || ""
     )}" />
     <p class="check-lab">2つ目</p>
-    <input class="pill nazo-in" data-lang2-in maxlength="12" placeholder="もうひとつ書く" value="${escapeHtml(
+    <input class="pill nazo-in" data-lang2-in maxlength="20" placeholder="もうひとつ書く" value="${escapeHtml(
       game.lang2 || ""
     )}" />
     <button class="primary" type="button" data-check-ok>これで答える</button>
@@ -371,8 +373,19 @@ function animalExamples(set, n = 4) {
 function animalKey(typed, set) {
   const t = toHira(typed);
   if (!t) return "";
-  const hit = (set.items || []).find((item) => item.ok.some((a) => toHira(a) === t));
-  return hit ? hit.key : "";
+  const kana = toHira(set && set.kana);
+  if (kana && t.charAt(0) !== kana) return "";
+  const items = set.items || [];
+  const exact = items.find((item) => item.ok.some((a) => toHira(a) === t));
+  if (exact) return exact.key;
+  if (t.length < 3) return "";
+  const fuzzy = items.find((item) =>
+    item.ok.some((a) => {
+      const h = toHira(a);
+      return h.startsWith(t) || (t.startsWith(h) && h.length >= 3);
+    })
+  );
+  return fuzzy ? fuzzy.key : "";
 }
 
 function twoAnimalsOk(a, b, set) {
