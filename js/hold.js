@@ -4,19 +4,27 @@ const HOLD_HINTS = ["家で使う", "外で使う", "勉強で使う", "食べ�
 
 const HOLD_BLUR = [28, 14, 4, 0];
 
-function nameHintFrom(answer) {
-  const text = String(answer || "").trim();
+function hasKanji(text) {
+  return /[\u3400-\u9fff\uf900-\ufaff々〆]/.test(String(text || ""));
+}
+
+function nameHintFrom(answer, reading) {
+  const text = String(reading || answer || "").trim();
   if (!text) return "";
   if (text.length < 2) return `短い名前で、「${text}」から始まります。`;
   return `「${text.slice(0, 1)}」から始まって、「${text.slice(-1)}」で終わります。`;
 }
 
-function holdGuessOk(text, answer) {
-  const guess = foldGuess(text);
+function holdGuessMatches(guess, answer) {
   const target = foldGuess(answer);
   if (!guess || !target) return false;
   if (guess === target) return true;
   return guess.length >= 2 && (target.includes(guess) || guess.includes(target));
+}
+
+function holdGuessOk(text, answer, reading) {
+  const guess = foldGuess(text);
+  return holdGuessMatches(guess, answer) || holdGuessMatches(guess, reading);
 }
 
 function loadImage(url) {
