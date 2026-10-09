@@ -971,9 +971,51 @@ a.ghost {
   font-weight: 700;
 }
 
-.rank-list b {
-  display: inline-block;
-  min-width: 1.2em;
+.bomb-wires,
+.bomb-marks {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.bomb-wire,
+.bomb-mark {
+  min-height: 64px;
+  border: 0;
+  border-radius: 16px;
+  font-weight: 900;
+  font-size: 1.05rem;
+  cursor: pointer;
+}
+
+.bomb-wire {
+  color: #3a2a24;
+  border: 3px solid #ffd0dc;
+}
+
+.bomb-mark {
+  background: #fff;
+  border: 3px solid #ffd0dc;
+}
+
+.bomb-manual {
+  background: #fff;
+  border-radius: 18px;
+  padding: 14px;
+  margin: 10px 0;
+}
+
+.bomb-manual li {
+  margin: 6px 0;
+}
+
+.hold-canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  touch-action: none;
+  border-radius: 16px;
+  background: #fff;
 }
 
 .talk-sum {

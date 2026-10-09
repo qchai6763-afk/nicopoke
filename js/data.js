@@ -899,6 +899,13 @@ const BRAIN_GAMES = [
     skill: "思考の柔軟性",
     blurb: "ダジャレやひらめきで、発想をやわらかくします。",
   },
+  {
+    id: "bomb",
+    domain: "insight",
+    title: "ことばで解除",
+    skill: "会話・注意",
+    blurb: "二人で役が分かれます。片方は爆弾、片方は手順だけ。声で伝えないと解けません。",
+  },
 ];
 
 const NAZO_QUIZ = [

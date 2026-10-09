@@ -386,6 +386,7 @@ function snapshotForGroup(groupId) {
     extraGrants: (state.extraGrants || []).filter((g) => g.groupId === groupId),
     rankWins: (state.rankWins || []).filter((w) => w.groupId === groupId),
     asks: (state.asks || []).filter((a) => questIds.has(a.questId)),
+    bomb: state.bomb && state.bomb.groupId === groupId ? state.bomb : null,
   };
 }
 
@@ -426,6 +427,10 @@ function pickQuest(local, incoming) {
     return applyThemeFields(
       Object.assign({}, incoming, {
         photoDataUrl: local.photoDataUrl,
+        mosaicMask: local.mosaicMask || incoming.mosaicMask || "",
+        secretAnswer: local.secretAnswer || incoming.secretAnswer || "",
+        usageHint: local.usageHint || incoming.usageHint || "",
+        nameHint: local.nameHint || incoming.nameHint || "",
         caption: incoming.caption || local.caption,
         postedAt: stamp(local.postedAt) || stamp(incoming.postedAt),
       }),
@@ -493,6 +498,47 @@ function mergeUser(local, incoming) {
   return scrubLeftUser(out);
 }
 
+function mergeBomb(a, b) {
+  if (!a) return b && b.phase !== "clear" ? b : null;
+  if (!b) return a && a.phase !== "clear" ? a : null;
+  if (a.phase === "clear" && stamp(a.updatedAt) >= stamp(b.updatedAt)) return null;
+  if (b.phase === "clear" && stamp(b.updatedAt) >= stamp(a.updatedAt)) return null;
+  if (a.phase === "clear") return b.phase === "clear" ? null : b;
+  if (b.phase === "clear") return a;
+  if (a.id !== b.id) return stamp(b.updatedAt) >= stamp(a.updatedAt) ? b : a;
+  const newer = stamp(b.updatedAt) >= stamp(a.updatedAt) ? b : a;
+  const phases = [a.phase, b.phase];
+  let phase = "lobby";
+  if (phases.indexOf("lost") >= 0) phase = "lost";
+  else if (phases.indexOf("won") >= 0) phase = "won";
+  else if (phases.indexOf("play") >= 0) phase = "play";
+  const strikes = Math.max(a.strikes || 0, b.strikes || 0);
+  if (strikes >= 2 && phase === "play") phase = "lost";
+  const started = [a.startedAt, b.startedAt].filter((n) => n > 0);
+  return Object.assign({}, newer, {
+    defuserId: a.defuserId && b.defuserId && a.defuserId !== b.defuserId ? newer.defuserId : a.defuserId || b.defuserId || "",
+    expertId: a.expertId && b.expertId && a.expertId !== b.expertId ? newer.expertId : a.expertId || b.expertId || "",
+    wireCut: Boolean(a.wireCut || b.wireCut),
+    symbolStep: Math.max(a.symbolStep || 0, b.symbolStep || 0),
+    strikes,
+    phase,
+    startedAt: started.length ? Math.min.apply(null, started) : newer.startedAt || 0,
+  });
+}
+
+function groupBomb() {
+  const group = currentGroup();
+  if (!state.bomb || !group || state.bomb.groupId !== group.id || state.bomb.phase === "clear") return null;
+  return state.bomb;
+}
+
+function setGroupBomb(bomb) {
+  const group = currentGroup();
+  if (!group) return;
+  state.bomb = bomb ? Object.assign({}, bomb, { groupId: group.id, updatedAt: Date.now() }) : { id: "none", groupId: group.id, phase: "clear", updatedAt: Date.now() };
+  notify();
+}
+
 function mergeSnapshot(snap) {
   if (!snap || !snap.group) return false;
   const before = JSON.stringify(snapshotForGroup(snap.group.id) || {});
@@ -538,6 +584,7 @@ function mergeSnapshot(snap) {
   (snap.rankWins || []).forEach((w) => upsertById(state.rankWins, w));
   if (!state.asks) state.asks = [];
   (snap.asks || []).forEach((a) => upsertById(state.asks, a));
+  if (snap.bomb) state.bomb = mergeBomb(state.bomb, snap.bomb);
   const after = JSON.stringify(snapshotForGroup(incoming.id) || {});
   return before !== after;
 }
@@ -562,6 +609,7 @@ function toLightSnapshot(snap) {
     extraGrants: snap.extraGrants || [],
     rankWins: snap.rankWins || [],
     asks: snap.asks || [],
+    bomb: snap.bomb || null,
   };
 }
 
@@ -790,21 +838,17 @@ function addMemberToCurrentGroup({ name }) {
 function ensureTodayQuests(groupId) {
   const date = todayKey();
   const members = groupMembers(groupId);
-  const taken = new Set();
-  const openIds = [];
+  const fields = {
+    theme: HOLD_THEME,
+    themeOptions: [HOLD_THEME],
+    category: "hold",
+    categoryLabel: "手元",
+    categoryEmoji: "✋",
+  };
   members.forEach((member) => {
     const exists = state.quests.find(
       (q) => q.groupId === groupId && q.userId === member.id && q.date === date && !q.bonus
     );
-    if (exists && isPosted(exists) && exists.theme) taken.add(exists.theme);
-    else openIds.push(member.id);
-  });
-  const plan = themesForMembers(openIds, date, taken);
-  members.forEach((member) => {
-    const exists = state.quests.find(
-      (q) => q.groupId === groupId && q.userId === member.id && q.date === date && !q.bonus
-    );
-    const fields = themeFields(plan[member.id] || slotFromHash(member.id, date).theme);
     if (!exists) {
         state.quests.push(
           Object.assign(
@@ -975,12 +1019,71 @@ function streakAtRisk(userId) {
   return dates.has(yest) && !dates.has(today);
 }
 
-function postPhoto(questId, { photoDataUrl, caption }) {
+function holdProgress(quest, userId) {
+  const list = guessesFor(quest.id).filter((g) => g.userId === userId);
+  const wrong = list.filter((g) => !g.correct && !g.gaveUp).length;
+  const solved = list.some((g) => g.correct);
+  const gaveUp = list.some((g) => g.gaveUp);
+  const over = solved || gaveUp || wrong >= 3;
+  const stage = over ? 3 : wrong;
+  return { wrong, solved, gaveUp, over, stage };
+}
+
+function submitHoldGuess(questId, text) {
+  const user = currentUser();
+  const quest = getQuest(questId);
+  const guessText = String(text || "").trim().slice(0, 30);
+  if (!user || !quest || !quest.secretAnswer || !guessText || !isPosted(quest) || quest.userId === user.id) return null;
+  const progress = holdProgress(quest, user.id);
+  if (progress.over) return null;
+  const guess = {
+    id: makeId("guess"),
+    questId,
+    userId: user.id,
+    text: guessText,
+    correct: holdGuessOk(guessText, quest.secretAnswer),
+    at: Date.now(),
+  };
+  state.guesses.push(guess);
+  notify();
+  return guess;
+}
+
+function giveUpHold(questId) {
+  const user = currentUser();
+  const quest = getQuest(questId);
+  if (!user || !quest || !quest.secretAnswer || quest.userId === user.id) return;
+  const progress = holdProgress(quest, user.id);
+  if (progress.over) return;
+  state.guesses.push({
+    id: makeId("guess"),
+    questId,
+    userId: user.id,
+    text: "",
+    correct: false,
+    gaveUp: true,
+    at: Date.now(),
+  });
+  notify();
+}
+
+function postPhoto(questId, { photoDataUrl, caption, mosaicMask, secretAnswer, usageHint }) {
   const quest = getQuest(questId);
   if (!quest) return;
   const before = streakFor(quest.userId);
+  const secret = String(secretAnswer || "").trim();
   quest.photoDataUrl = photoDataUrl;
   quest.caption = String(caption || "").trim();
+  quest.mosaicMask = mosaicMask || "";
+  quest.secretAnswer = secret;
+  quest.usageHint = usageHint || "";
+  quest.nameHint = nameHintFrom(secret);
+  if (secret) {
+    quest.theme = HOLD_THEME;
+    quest.category = "hold";
+    quest.categoryLabel = "手元";
+    quest.categoryEmoji = "✋";
+  }
   quest.postedAt = Math.max(Date.now(), (quest.deletedAt || 0) + 1);
   quest.revealed = false;
   const after = streakFor(quest.userId);
@@ -1295,6 +1398,10 @@ function clearPost(quest, now) {
   quest.deletedAt = Math.max(now, stamp(quest.postedAt) + 1, stamp(quest.deletedAt));
   quest.photoDataUrl = "";
   quest.caption = "";
+  quest.mosaicMask = "";
+  quest.secretAnswer = "";
+  quest.usageHint = "";
+  quest.nameHint = "";
   quest.postedAt = null;
   quest.hasPhoto = false;
   quest.revealed = false;
