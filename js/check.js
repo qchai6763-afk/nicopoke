@@ -371,20 +371,75 @@ function animalExamples(set, n = 4) {
     .join("、");
 }
 
+const ANIMAL_VOWEL = {};
+[
+  ["a", "あかさたなはまやらわ"],
+  ["i", "いきしちにひみり"],
+  ["u", "うくすつぬふむゆる"],
+  ["e", "えけせてねへめれ"],
+  ["o", "おこそとのほもよろを"],
+].forEach(([v, row]) => Array.from(row).forEach((ch) => (ANIMAL_VOWEL[ch] = v)));
+
+const ANIMAL_KANJI_PARTS = [
+  ["日本", ["にほん"]], ["北極", ["ほっきょく"]], ["熱帯", ["ねったい"]], ["野良", ["のら"]],
+  ["虫", ["むし"]], ["鳥", ["とり"]], ["魚", ["さかな", "うお"]], ["貝", ["かい"]], ["蝶", ["ちょう"]],
+  ["犬", ["いぬ"]], ["猫", ["ねこ"]], ["熊", ["くま"]], ["牛", ["うし"]], ["馬", ["うま"]], ["豚", ["ぶた"]],
+  ["羊", ["ひつじ"]], ["兎", ["うさぎ"]], ["鹿", ["しか"]], ["猿", ["さる"]], ["象", ["ぞう"]], ["虎", ["とら"]],
+  ["狐", ["きつね"]], ["狸", ["たぬき"]], ["鼠", ["ねずみ"]], ["蛇", ["へび"]], ["亀", ["かめ"]], ["蛙", ["かえる"]],
+  ["蜂", ["はち"]], ["蟹", ["かに"]], ["鯉", ["こい"]], ["鴨", ["かも"]], ["鷲", ["わし"]], ["鷹", ["たか"]],
+  ["鶴", ["つる"]], ["鳩", ["はと"]], ["雀", ["すずめ"]], ["烏", ["からす"]], ["鮫", ["さめ"]], ["蛍", ["ほたる"]],
+  ["白", ["しろ"]], ["黒", ["くろ"]], ["赤", ["あか"]], ["青", ["あお"]], ["金", ["きん"]], ["銀", ["ぎん"]],
+  ["子", ["こ"]], ["小", ["こ"]], ["大", ["おお"]], ["山", ["やま"]], ["川", ["かわ"]], ["海", ["うみ"]], ["野", ["の"]],
+];
+
+function animalLoose(text) {
+  const base = String(text || "")
+    .normalize("NFKC")
+    .replace(/[ァ-ヶ]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60))
+    .replace(/[\s・、。,.!?！？「」『』()（）〜~ー－-]/g, "")
+    .toLowerCase()
+    .replace(/(ちゃん|さん|くん|さま|たち)$/, "");
+  let out = "";
+  Array.from(base).forEach((raw) => {
+    const ch = animalSeion(raw);
+    const prev = ANIMAL_VOWEL[out.slice(-1)];
+    const mine = "あいうえお".includes(ch) ? ANIMAL_VOWEL[ch] : "";
+    if (prev && mine && (prev === mine || (prev === "o" && ch === "う") || (prev === "e" && ch === "い"))) return;
+    out += ch;
+  });
+  return out;
+}
+
+function animalReadings(typed) {
+  let list = [String(typed || "")];
+  ANIMAL_KANJI_PARTS.forEach(([kanji, readings]) => {
+    if (!list.some((s) => s.includes(kanji))) return;
+    list = list.concat(list.flatMap((s) => (s.includes(kanji) ? readings.map((r) => s.split(kanji).join(r)) : []))).slice(0, 32);
+  });
+  const out = [];
+  list.forEach((s) => {
+    const loose = animalLoose(s);
+    if (loose) out.push(loose);
+    const plain = s.trim().replace(/^(お|御)/, "");
+    if (plain !== s.trim() && plain.length >= 2) out.push(animalLoose(plain));
+  });
+  return Array.from(new Set(out));
+}
+
 function animalKey(typed, set) {
-  const t = toHira(typed);
-  if (!t) return "";
-  const kana = toHira(set && set.kana);
-  if (kana && t.charAt(0) !== kana) return "";
-  const items = set.items || [];
-  const exact = items.find((item) => item.ok.some((a) => toHira(a) === t));
+  const items = (set && set.items) || [];
+  const kana = animalSeion(String((set && set.kana) || "").charAt(0));
+  const tries = animalReadings(typed);
+  if (!tries.length) return "";
+  const looseOf = (item) => item.ok.map(animalLoose);
+  const exact = items.find((item) => looseOf(item).some((a) => tries.includes(a)));
   if (exact) return exact.key;
-  if (t.length < 3) return "";
   const fuzzy = items.find((item) =>
-    item.ok.some((a) => {
-      const h = toHira(a);
-      return h.startsWith(t) || (t.startsWith(h) && h.length >= 3);
-    })
+    looseOf(item).some((a) =>
+      tries.some(
+        (t) => t.charAt(0) === kana && t.length >= 3 && (a.startsWith(t) || (t.startsWith(a) && a.length >= 3))
+      )
+    )
   );
   return fuzzy ? fuzzy.key : "";
 }
