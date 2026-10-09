@@ -819,13 +819,7 @@ function addMemberToCurrentGroup({ name }) {
 function ensureTodayQuests(groupId) {
   const date = todayKey();
   const members = groupMembers(groupId);
-  const fields = {
-    theme: HOLD_THEME,
-    themeOptions: [HOLD_THEME],
-    category: "hold",
-    categoryLabel: "手元",
-    categoryEmoji: "✋",
-  };
+  const fields = holdFields(date);
   members.forEach((member) => {
     const exists = state.quests.find(
       (q) => q.groupId === groupId && q.userId === member.id && q.date === date && !q.bonus
@@ -1062,10 +1056,7 @@ function postPhoto(questId, { photoDataUrl, caption, mosaicMask, secretAnswer, s
   quest.usageHint = usageHint || "";
   quest.nameHint = nameHintFrom(secret, reading);
   if (secret) {
-    quest.theme = HOLD_THEME;
-    quest.category = "hold";
-    quest.categoryLabel = "手元";
-    quest.categoryEmoji = "✋";
+    Object.assign(quest, holdFields(quest.date));
   }
   quest.postedAt = Math.max(Date.now(), (quest.deletedAt || 0) + 1);
   quest.revealed = false;
@@ -1438,10 +1429,6 @@ function ensureBonusQuest(groupId, userId) {
   const date = todayKey();
   const questId = `q-${userId}-${date}-b`;
   if (state.quests.some((q) => q.id === questId)) return;
-  const taken = new Set(
-    state.quests.filter((q) => q.groupId === groupId && q.date === date).map((q) => q.theme)
-  );
-  const theme = themesForMembers([userId], `${date}:talk-bonus`, taken)[userId];
   state.quests.push(
     Object.assign(
       {
@@ -1457,7 +1444,7 @@ function ensureBonusQuest(groupId, userId) {
         revealed: false,
         postedAt: null,
       },
-      themeFields(theme)
+      holdFields(date)
     )
   );
 }

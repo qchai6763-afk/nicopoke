@@ -282,7 +282,7 @@ function renderLogin() {
     <div class="gate">
       <div class="badge">にこぽけ</div>
       <h1>今日の一枚を、<br />みんなで。</h1>
-      <p>その日、人ごとに別のお題で写真を送ります。家族は写真を見て、おしゃべりします。</p>
+      <p>曜日ごとのお題で、いまの生活の一枚を送ります。家族は写真を見て、おしゃべりします。</p>
       ${err ? `<p class="gate-err">${escapeHtml(err)}</p>` : ""}
       ${warn ? `<p class="gate-warn">${escapeHtml(warn)}</p>` : ""}
       ${
@@ -459,7 +459,7 @@ function renderToday() {
       ${
         posted
           ? ""
-          : `<p class="help">手もとに持っているものを撮って、隠したいところをなぞってください。</p>`
+          : `<p class="help">${escapeHtml(holdHelp(quest.date))}</p>`
       }
       ${editor}
       ${stage}
@@ -1090,7 +1090,7 @@ function tutorialSlides() {
       img: "img/brain-intro-memory.png",
       alt: "家族の写真カードのイラスト",
       title: "今日の一枚を送る",
-      text: "下の「今日」から、自分だけの今日のお題で写真を送ります。家族の写真の下の大きいボタンを押すと、気持ちが届きます。",
+      text: "下の「今日」から、その曜日のお題で写真を送ります。1つだけ近くで撮って、隠したいところをなぞってください。",
     },
     {
       img: "img/brain-intro-order.png",

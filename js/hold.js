@@ -1,6 +1,73 @@
-const HOLD_THEME = "手もとに持ってるのはなーんだ？";
+const HOLD_DAYS = [
+  {
+    theme: "今の季節がわかるものはなーんだ？",
+    label: "季節",
+    emoji: "🍂",
+    help: "みかん、上着、花など、今の季節がわかるものを1つ撮ってください。",
+  },
+  {
+    theme: "手もとに持ってるのはなーんだ？",
+    label: "手元",
+    emoji: "✋",
+    help: "いま手に持っているものを撮ってください。",
+  },
+  {
+    theme: "いま飲んでるのはなーんだ？",
+    label: "飲み物",
+    emoji: "☕",
+    help: "いま飲んでいるものを、コップごと近くで撮ってください。",
+  },
+  {
+    theme: "いまのおやつ・ごはんはなーんだ？",
+    label: "ごはん",
+    emoji: "🍙",
+    help: "いまのおやつやごはんを、1品だけ近くで撮ってください。",
+  },
+  {
+    theme: "テーブルの上から1つ、なーんだ？",
+    label: "テーブル",
+    emoji: "🪑",
+    help: "テーブルや机の上から、1つだけ持ち上げて撮ってください。",
+  },
+  {
+    theme: "今日つかった道具はなーんだ？",
+    label: "道具",
+    emoji: "🔧",
+    help: "リモコン、箸、ペン、はさみなど、今日つかった道具を1つ撮ってください。",
+  },
+  {
+    theme: "棚か引き出しから1つ、なーんだ？",
+    label: "棚",
+    emoji: "📦",
+    help: "棚や引き出しから1つ出して、近くで撮ってください。中を撮らないでください。",
+  },
+];
+
+const HOLD_THEME = HOLD_DAYS[1].theme;
 
 const HOLD_HINTS = ["家で使う", "外で使う", "勉強で使う", "食べるもの", "飲むもの", "着るもの", "遊ぶもの", "仕事で使う"];
+
+function holdForKey(iso) {
+  const [y, m, d] = String(iso || "").split("-").map(Number);
+  const date = y && m && d ? new Date(y, m - 1, d) : new Date();
+  return HOLD_DAYS[date.getDay()] || HOLD_DAYS[1];
+}
+
+function holdFields(iso) {
+  const hold = holdForKey(iso);
+  return {
+    theme: hold.theme,
+    themeOptions: [hold.theme],
+    category: "hold",
+    categoryLabel: hold.label,
+    categoryEmoji: hold.emoji,
+  };
+}
+
+function holdHelp(iso) {
+  const hold = holdForKey(iso);
+  return `1つだけ、近くで撮って、隠したいところをなぞってください。${hold.help}`;
+}
 
 const HOLD_BLUR = [28, 14, 4, 0];
 
