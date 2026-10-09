@@ -653,6 +653,295 @@ function renderBrainIntro(kind) {
   });
 }
 
+const WIRE_COLORS = [
+  { id: "red", name: "赤", hex: "#e85d75" },
+  { id: "blue", name: "青", hex: "#3d7eff" },
+  { id: "yellow", name: "黄", hex: "#f0c14a" },
+  { id: "white", name: "白", hex: "#f7f4ef" },
+];
+const BOMB_MARKS = [
+  { id: "star", name: "星", glyph: "★" },
+  { id: "moon", name: "月", glyph: "☾" },
+  { id: "flower", name: "花", glyph: "✿" },
+  { id: "drop", name: "しずく", glyph: "●" },
+  { id: "leaf", name: "葉", glyph: "🍃" },
+  { id: "sun", name: "太陽", glyph: "☀" },
+];
+const MARK_ORDER = ["star", "moon", "flower", "drop", "leaf", "sun"];
+
+function bombRand(seed) {
+  let h = hashString(String(seed)) || 1;
+  return function () {
+    h = (Math.imul(h, 1664525) + 1013904223) >>> 0;
+    return h / 4294967296;
+  };
+}
+
+function bombPuzzle(seed) {
+  const rand = bombRand(seed);
+  const wires = [0, 1, 2, 3].map(function () {
+    return WIRE_COLORS[Math.floor(rand() * WIRE_COLORS.length)];
+  });
+  const pool = BOMB_MARKS.slice();
+  const marks = [];
+  while (marks.length < 4) {
+    marks.push(pool.splice(Math.floor(rand() * pool.length), 1)[0]);
+  }
+  return { wires: wires, marks: marks, wireAnswer: wireAnswerIndex(wires), symbolOrder: symbolPressOrder(marks) };
+}
+
+function wireAnswerIndex(wires) {
+  const last = wires.length - 1;
+  if (wires[last].id === "white") return last;
+  const reds = [];
+  wires.forEach(function (wire, index) {
+    if (wire.id === "red") reds.push(index);
+  });
+  if (reds.length >= 2) return reds[reds.length - 1];
+  const blue = wires.findIndex(function (wire) {
+    return wire.id === "blue";
+  });
+  if (blue >= 0) return blue;
+  return 0;
+}
+
+function symbolPressOrder(marks) {
+  return MARK_ORDER.map(function (id) {
+    return marks.findIndex(function (mark) {
+      return mark.id === id;
+    });
+  }).filter(function (index) {
+    return index >= 0;
+  });
+}
+
+function freshBomb(groupId) {
+  return {
+    id: "bomb-" + groupId,
+    groupId: groupId,
+    phase: "lobby",
+    defuserId: "",
+    expertId: "",
+    seed: "",
+    startedAt: 0,
+    seconds: 180,
+    wireCut: false,
+    symbolStep: 0,
+    strikes: 0,
+  };
+}
+
+function claimBombRole(role) {
+  const user = currentUser();
+  const group = currentGroup();
+  if (!user || !group) return;
+  if (role !== "defuser" && role !== "expert") return;
+  let bomb = groupBomb();
+  if (!bomb || bomb.phase === "won" || bomb.phase === "lost") bomb = freshBomb(group.id);
+  if (bomb.phase !== "lobby") return;
+  const mineKey = role === "defuser" ? "defuserId" : "expertId";
+  const otherKey = role === "defuser" ? "expertId" : "defuserId";
+  if (bomb[mineKey] && bomb[mineKey] !== user.id) return;
+  if (bomb[otherKey] === user.id) bomb[otherKey] = "";
+  bomb[mineKey] = user.id;
+  if (bomb.defuserId && bomb.expertId) {
+    bomb.phase = "play";
+    bomb.seed = bomb.id;
+    bomb.startedAt = Date.now();
+    bomb.wireCut = false;
+    bomb.symbolStep = 0;
+    bomb.strikes = 0;
+  }
+  setGroupBomb(bomb);
+}
+
+function bombFinish(bomb, puzzle) {
+  if (bomb.strikes >= 2) bomb.phase = "lost";
+  else if (bomb.wireCut && bomb.symbolStep >= puzzle.symbolOrder.length) bomb.phase = "won";
+}
+
+function bombCutWire(index) {
+  const user = currentUser();
+  const bomb = groupBomb();
+  if (!user || !bomb || bomb.phase !== "play" || bomb.defuserId !== user.id || bomb.wireCut) return;
+  const puzzle = bombPuzzle(bomb.seed);
+  if (index === puzzle.wireAnswer) bomb.wireCut = true;
+  else bomb.strikes = (bomb.strikes || 0) + 1;
+  bombFinish(bomb, puzzle);
+  setGroupBomb(bomb);
+}
+
+function bombPressMark(index) {
+  const user = currentUser();
+  const bomb = groupBomb();
+  if (!user || !bomb || bomb.phase !== "play" || bomb.defuserId !== user.id) return;
+  const puzzle = bombPuzzle(bomb.seed);
+  if (bomb.symbolStep >= puzzle.symbolOrder.length) return;
+  if (index === puzzle.symbolOrder[bomb.symbolStep]) bomb.symbolStep += 1;
+  else bomb.strikes = (bomb.strikes || 0) + 1;
+  bombFinish(bomb, puzzle);
+  setGroupBomb(bomb);
+}
+
+function bombExpire(bomb) {
+  if (!bomb || bomb.phase !== "play") return;
+  if (Date.now() < bomb.startedAt + bomb.seconds * 1000) return;
+  bomb.phase = "lost";
+  setGroupBomb(bomb);
+}
+
+function ensureBombSync() {
+  if (window.__bombSync) return;
+  window.__bombSync = window.setInterval(function () {
+    if (brainKind() !== "bomb") {
+      window.clearInterval(window.__bombSync);
+      window.__bombSync = 0;
+      return;
+    }
+    refreshFromCloud().then(function () {
+      if (brainKind() === "bomb") render();
+    });
+  }, 1000);
+}
+
+function renderBomb() {
+  ensureBombSync();
+  const user = currentUser();
+  const group = currentGroup();
+  const members = groupMembers(group.id);
+  let bomb = groupBomb();
+  if (bomb && bomb.phase === "play") bombExpire(bomb);
+  bomb = groupBomb();
+  if (bomb && bomb.phase === "play" && brainStage() !== "play") {
+    location.hash = "#/brain/bomb/play";
+    return;
+  }
+  const role = bomb && bomb.defuserId === user.id ? "defuser" : bomb && bomb.expertId === user.id ? "expert" : "";
+  let body = "";
+  if (members.length < 2) {
+    body = '<h1 class="theme">二人で遊ぶゲームです</h1><p class="help">同じグループの、もう一人がこの画面を開いてください。電話か、隣で声をかけて遊びます。</p>';
+  } else if (!bomb || bomb.phase === "lobby") {
+    const defuser = bomb && userById(bomb.defuserId);
+    const expert = bomb && userById(bomb.expertId);
+    body =
+      '<h1 class="theme">ことばで解除</h1>' +
+      '<p class="help">役が分かれます。爆弾が見える人と、手順だけが見える人です。同じ画面は見えないので、声で伝えてください。まちがいは2回まで。3分です。</p>' +
+      '<p class="kicker">解体する人 ' +
+      escapeHtml(defuser ? defuser.name : "まだ") +
+      "</p>" +
+      '<button type="button" class="primary" data-bomb-role="defuser">解体する</button>' +
+      '<p class="kicker">手順を読む人 ' +
+      escapeHtml(expert ? expert.name : "まだ") +
+      "</p>" +
+      '<button type="button" class="ghost" data-bomb-role="expert">手順を読む</button>';
+  } else if (bomb.phase === "won" || bomb.phase === "lost") {
+    body =
+      '<h1 class="theme">' +
+      (bomb.phase === "won" ? "解除できた" : "時間切れ、またはまちがいが2回") +
+      "</h1>" +
+      '<p class="help">声で伝え合えたら、もう一度どうぞ。</p>' +
+      '<button type="button" class="primary" data-bomb-reset>もう一度役を決める</button>';
+  } else if (role === "expert") {
+    const left = Math.max(0, Math.ceil((bomb.startedAt + bomb.seconds * 1000 - Date.now()) / 1000));
+    body =
+      '<p class="bomb-time">のこり ' +
+      left +
+      " 秒　まちがい " +
+      bomb.strikes +
+      "/2</p>" +
+      '<div class="bomb-manual"><p class="kicker">線の手順</p><ul>' +
+      "<li>右はしが白なら、その白い線を切る。</li>" +
+      "<li>そうでなくて、赤が2本以上なら、右はしの赤を切る。</li>" +
+      "<li>そうでなくて、青があれば、左から最初の青を切る。</li>" +
+      "<li>どれでもなければ、左から1本目を切る。</li>" +
+      "<li>線は左から1本目、2本目と数える。右はしは、最後の1本です。</li></ul>" +
+      '<p class="kicker">印の手順</p><p>相手が見ている印を、この順番で押してもらう。ない印は飛ばす。</p>' +
+      "<p>星 → 月 → 花 → しずく → 葉 → 太陽</p></div>" +
+      '<p class="help">爆弾の絵は、こちらには出ません。色と印を聞いて、切る線と押す順番を伝えてください。</p>';
+  } else if (role === "defuser") {
+    const puzzle = bombPuzzle(bomb.seed);
+    const left = Math.max(0, Math.ceil((bomb.startedAt + bomb.seconds * 1000 - Date.now()) / 1000));
+    const wires = puzzle.wires
+      .map(function (wire, index) {
+        return (
+          '<button type="button" class="bomb-wire" data-bomb-wire="' +
+          index +
+          '" style="background:' +
+          wire.hex +
+          '"' +
+          (bomb.wireCut ? " disabled" : "") +
+          ">" +
+          (index + 1) +
+          "本目</button>"
+        );
+      })
+      .join("");
+    const marks = puzzle.marks
+      .map(function (mark, index) {
+        const done = puzzle.symbolOrder.indexOf(index) >= 0 && puzzle.symbolOrder.indexOf(index) < bomb.symbolStep;
+        return (
+          '<button type="button" class="bomb-mark" data-bomb-mark="' +
+          index +
+          '"' +
+          (done ? " disabled" : "") +
+          ">" +
+          mark.glyph +
+          " " +
+          escapeHtml(mark.name) +
+          "</button>"
+        );
+      })
+      .join("");
+    body =
+      '<p class="bomb-time">のこり ' +
+      left +
+      " 秒　まちがい " +
+      bomb.strikes +
+      "/2</p>" +
+      "<p class=\"kicker\">線 " +
+      (bomb.wireCut ? "切った" : "まだ") +
+      "</p><div class=\"bomb-wires\">" +
+      wires +
+      "</div><p class=\"kicker\">印 " +
+      bomb.symbolStep +
+      "/" +
+      puzzle.symbolOrder.length +
+      '</p><div class="bomb-marks">' +
+      marks +
+      "</div>" +
+      '<p class="help">色と印の名前を、声で伝えてください。手順は向こうにしかありません。</p>';
+  } else {
+    body = '<h1 class="theme">二人で解除中です</h1><p class="help">いまの二人の画面には、別々のものが出ています。</p>';
+  }
+  app.innerHTML = chrome(
+    '<a class="back-link" href="#/brain">← 脳トレ一覧</a><p class="kicker">ことばで解除</p>' + body,
+    "brain"
+  );
+  bindTop();
+  app.querySelectorAll("[data-bomb-role]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      claimBombRole(btn.dataset.bombRole);
+    });
+  });
+  app.querySelector("[data-bomb-reset]")?.addEventListener("click", function () {
+    const group = currentGroup();
+    if (!group) return;
+    const next = freshBomb(group.id);
+    next.id = "bomb-" + group.id + "-" + Date.now();
+    setGroupBomb(next);
+  });
+  app.querySelectorAll("[data-bomb-wire]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      bombCutWire(Number(btn.dataset.bombWire));
+    });
+  });
+  app.querySelectorAll("[data-bomb-mark]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      bombPressMark(Number(btn.dataset.bombMark));
+    });
+  });
+}
+
 function renderBrain() {
   const group = currentGroup();
   if (!group) {
@@ -660,6 +949,7 @@ function renderBrain() {
     return;
   }
   const kind = brainKind();
+  if (kind === "bomb") return renderBomb();
   const playing = brainPlaying();
   if (kind !== "check") stopCheckTimer();
   if (brainStage() !== "play") stopPlayClock();

@@ -419,16 +419,24 @@ function renderToday() {
        <a class="primary" href="#/feed">みんなの写真を見る</a>
        <a class="ghost" href="#/brain">脳トレで息抜き</a>`
     : preview
-      ? `<div class="stage"><img src="${preview}" alt="プレビュー" /></div>
-         <label class="caption-label">一言コメント（任意）
-           <input class="pill" data-caption maxlength="40" placeholder="例）すごくおいしかった" value="${escapeHtml(
-             window.__captionDraft || ""
-           )}" />
+      ? `<div class="hold-editor">
+         <div data-mosaic-host></div>
+         <p class="help">持っているものの上を、指でなぞって隠します。</p>
+         <label class="caption-label">持っているもの
+           <input class="pill" data-secret maxlength="20" placeholder="例）ほうじ茶" value="${escapeHtml(window.__secretDraft || "")}" />
          </label>
+         <p class="kicker">最初のヒント</p>
+         <div class="chips">
+           ${HOLD_HINTS.map(
+             (hint) =>
+               `<button type="button" class="chip ${window.__usageHint === hint ? "on" : ""}" data-usage-hint="${escapeHtml(hint)}">${escapeHtml(hint)}</button>`
+           ).join("")}
+         </div>
          <div class="preview-actions">
            <button class="primary" type="button" data-confirm>この写真で送る</button>
            <button class="ghost" type="button" data-clear-preview>選びなおす</button>
-         </div>`
+         </div>
+       </div>`
       : `${photoPickHtml("quest")}
          <p class="help">カメラで撮るか、フォルダーから選べます。</p>`;
 
@@ -447,7 +455,7 @@ function renderToday() {
       ${
         posted
           ? ""
-          : `<p class="help">今日のお題は、あなただけのもの。ほかの人とは違います。</p>`
+          : `<p class="help">手もとに持っているものを撮って、隠したいところをなぞってください。</p>`
       }
       ${editor}
       ${stage}
@@ -462,20 +470,38 @@ function renderToday() {
   bindFileInputs(app, (file) => {
     compressPhoto(file, (url) => {
       window.__photoPreview = url;
+      window.__mosaicMask = "";
       render();
     });
   });
-  app.querySelector("[data-caption]")?.addEventListener("input", (e) => {
-    window.__captionDraft = e.target.value;
+  const host = app.querySelector("[data-mosaic-host]");
+  if (host && window.__photoPreview) mountMosaicEditor(host, window.__photoPreview);
+  app.querySelector("[data-secret]")?.addEventListener("input", (e) => {
+    window.__secretDraft = e.target.value;
+  });
+  app.querySelectorAll("[data-usage-hint]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      window.__usageHint = btn.dataset.usageHint;
+      app.querySelectorAll("[data-usage-hint]").forEach((el) => {
+        el.classList.toggle("on", el.dataset.usageHint === window.__usageHint);
+      });
+    });
   });
   app.querySelector("[data-confirm]")?.addEventListener("click", () => {
-    if (!window.__photoPreview) return;
+    const secret = String(window.__secretDraft || "").trim();
+    if (!window.__photoPreview || !secret || !window.__usageHint) return;
+    if (!window.__mosaicMask) return;
     postPhoto(quest.id, {
       photoDataUrl: window.__photoPreview,
-      caption: window.__captionDraft || "",
+      mosaicMask: window.__mosaicMask,
+      secretAnswer: secret,
+      usageHint: window.__usageHint,
+      caption: "",
     });
     window.__photoPreview = "";
-    window.__captionDraft = "";
+    window.__secretDraft = "";
+    window.__usageHint = "";
+    window.__mosaicMask = "";
     go("/feed");
   });
   app.querySelector("[data-clear-preview]")?.addEventListener("click", () => {
@@ -498,9 +524,13 @@ function postCard(quest, viewerId) {
   const hidden = expanded ? 0 : Math.max(0, comments.length - VISIBLE_COMMENTS);
   const shown = comments.slice(hidden);
 
+  const hold = quest.secretAnswer ? holdProgress(quest, viewerId) : null;
+  const showClear = mine || !quest.secretAnswer || (hold && hold.over);
   const media = posted
-    ? `<img src="${quest.photoDataUrl}" alt="" />
-       ${(mine || quest.revealed || guessedRight(quest.id, viewerId)) ? '<div class="tag">お題：' + escapeHtml(quest.theme) + '</div>' : ""}`
+    ? showClear
+      ? `<img src="${quest.photoDataUrl}" alt="" />
+       ${mine || !quest.secretAnswer ? '<div class="tag">お題：' + escapeHtml(quest.theme) + "</div>" : ""}`
+      : `<p class="kicker">${escapeHtml(quest.theme)}</p><canvas class="hold-canvas" data-hold-view="${quest.id}" data-hold-stage="${hold.stage}"></canvas>`
     : `<div class="locked"><div><span>🔒</span><em>waiting</em></div></div>`;
 
   const waitCopy = !posted
@@ -588,9 +618,9 @@ function postCard(quest, viewerId) {
        </div>`
     : "";
 
-  const choiceLeft = !mine && posted && !quest.revealed && !guessedRight(quest.id, viewerId) ? remainingChoices(quest, viewerId) : [];
+  const choiceLeft = !quest.secretAnswer && !mine && posted && !quest.revealed && !guessedRight(quest.id, viewerId) ? remainingChoices(quest, viewerId) : [];
   const choiceUi =
-    !mine && posted && guessedRight(quest.id, viewerId)
+    !quest.secretAnswer && !mine && posted && guessedRight(quest.id, viewerId)
       ? `<p class="guess-note ok">当たった。お題は「${escapeHtml(quest.theme)}」</p>`
       : choiceLeft.length
         ? `<div class="choice-box">
@@ -617,7 +647,7 @@ function postCard(quest, viewerId) {
   const askPool = shuffleSeeded(ASK_QUESTIONS || [], `${quest.id}:ask`);
   const askLeft = askPool.filter((q) => !askedIds[q.id]).slice(0, 4);
   const askUi =
-    !mine && posted && !guessedRight(quest.id, viewerId)
+    !quest.secretAnswer && !mine && posted && !guessedRight(quest.id, viewerId)
       ? `<div class="choice-box">
            <p class="kicker">質問 ${askedRows.length} / ${askQuota}</p>
            ${askedRows
@@ -714,6 +744,24 @@ function postCard(quest, viewerId) {
        </div>`
     : "";
 
+  const holdUi =
+    quest.secretAnswer && !mine && posted
+      ? hold.over
+        ? `<div class="choice-box"><p class="guess-note">${hold.solved ? "当たり" : "ゲームオーバー"}</p><p class="fit-answer">答え：${escapeHtml(quest.secretAnswer)}</p></div>`
+        : `<div class="choice-box">
+            <p class="help">ヒント：${escapeHtml(quest.usageHint || "")}</p>
+            ${hold.stage >= 1 ? `<p class="help">名前のヒント：${escapeHtml(quest.nameHint || "")}</p>` : ""}
+            <form class="composer" data-hold-guess="${quest.id}">
+              <div class="actions">
+                <input class="pill" name="guess" maxlength="30" placeholder="なにを持ってる？" />
+                <button class="pill-btn" type="submit">答える</button>
+              </div>
+            </form>
+            <button type="button" class="ghost" data-hold-giveup="${quest.id}">モザイクを外す</button>
+            <p class="help">いま ${hold.stage + 1} 回目。あと ${3 - hold.wrong} 回。モザイクを外すとゲームオーバーです。</p>
+          </div>`
+      : "";
+
   return `
     <article class="post">
       <div class="post-head">
@@ -725,6 +773,8 @@ function postCard(quest, viewerId) {
       <div class="frame">${media}</div>
       ${waitCopy}
       ${captionLine}
+      ${mine && quest.secretAnswer ? `<p class="theme-mine">あなたが書いた答え　${escapeHtml(quest.secretAnswer)}</p>` : ""}
+      ${holdUi}
       ${choiceUi}
       ${askUi}
       ${grantUi}
@@ -800,6 +850,16 @@ function bindFeedActions() {
   app.querySelectorAll("[data-ask]").forEach((btn) => {
     btn.addEventListener("click", () => askQuestion(btn.dataset.ask, btn.dataset.askId));
   });
+  app.querySelectorAll("[data-hold-guess]").forEach((form) => {
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      submitHoldGuess(form.dataset.holdGuess, new FormData(form).get("guess"));
+    });
+  });
+  app.querySelectorAll("[data-hold-giveup]").forEach((btn) => {
+    btn.addEventListener("click", () => giveUpHold(btn.dataset.holdGiveup));
+  });
+  paintHoldCards();
   app.querySelectorAll("[data-grant-extra]").forEach((btn) => {
     btn.addEventListener("click", () => grantExtraPhoto(btn.dataset.grantExtra));
   });
