@@ -436,6 +436,7 @@ function renderToday() {
            <button class="primary" type="button" data-confirm>この写真で送る</button>
            <button class="ghost" type="button" data-clear-preview>選びなおす</button>
          </div>
+         <p class="help" data-hold-msg></p>
        </div>`
       : `${photoPickHtml("quest")}
          <p class="help">カメラで撮るか、フォルダーから選べます。</p>`;
@@ -487,10 +488,20 @@ function renderToday() {
       });
     });
   });
+  const holdMsg = app.querySelector("[data-hold-msg]");
+  host?.addEventListener("mosaicchange", () => {
+    if (holdMsg) holdMsg.textContent = "";
+  });
   app.querySelector("[data-confirm]")?.addEventListener("click", () => {
     const secret = String(window.__secretDraft || "").trim();
-    if (!window.__photoPreview || !secret || !window.__usageHint) return;
-    if (!window.__mosaicMask) return;
+    const missing = [];
+    if (!window.__mosaicMask) missing.push("写真を指でなぞってモザイクをかける");
+    if (!secret) missing.push("持っているものの名前を書く");
+    if (!window.__usageHint) missing.push("最初のヒントを選ぶ");
+    if (!window.__photoPreview || missing.length) {
+      if (holdMsg) holdMsg.textContent = `あと少し：${missing.join("、")}`;
+      return;
+    }
     postPhoto(quest.id, {
       photoDataUrl: window.__photoPreview,
       mosaicMask: window.__mosaicMask,
@@ -506,6 +517,7 @@ function renderToday() {
   });
   app.querySelector("[data-clear-preview]")?.addEventListener("click", () => {
     window.__photoPreview = "";
+    window.__mosaicMask = "";
     render();
   });
   app.querySelector("[data-enable-push]")?.addEventListener("click", () => enablePush());
@@ -1448,25 +1460,32 @@ async function enablePush() {
   render();
 }
 
+function userIsEditing() {
+  if (window.__mosaicDrawing) return true;
+  const el = document.activeElement;
+  return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA");
+}
+
+function renderAfterSync(changed) {
+  if (changed) window.__pendingSyncRender = true;
+  if (!window.__pendingSyncRender || userIsEditing()) return;
+  window.__pendingSyncRender = false;
+  render();
+}
+
 boot();
 refreshFromCloud().then((changed) => {
-  if (changed) render();
+  renderAfterSync(changed);
   paintTutorial();
 });
 window.setInterval(() => {
   if (route() === "brain") return;
-  refreshFromCloud().then((changed) => {
-    if (changed) render();
-  });
+  refreshFromCloud().then(renderAfterSync);
 }, 3000);
 window.addEventListener("focus", () => {
-  refreshFromCloud().then((changed) => {
-    if (changed) render();
-  });
+  refreshFromCloud().then(renderAfterSync);
 });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "visible") return;
-  refreshFromCloud().then((changed) => {
-    if (changed) render();
-  });
+  refreshFromCloud().then(renderAfterSync);
 });
