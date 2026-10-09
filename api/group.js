@@ -75,6 +75,7 @@ function pickQuest(local, incoming) {
         photoDataUrl: local.photoDataUrl,
         mosaicMask: local.mosaicMask || incoming.mosaicMask || "",
         secretAnswer: local.secretAnswer || incoming.secretAnswer || "",
+        secretReading: local.secretReading || incoming.secretReading || "",
         usageHint: local.usageHint || incoming.usageHint || "",
         nameHint: local.nameHint || incoming.nameHint || "",
         caption: incoming.caption || local.caption,
@@ -190,16 +191,8 @@ function mergeSnapshots(existing, incoming) {
   (incoming.likes || []).forEach((l) => upsertById(likes, l));
   const talkReacts = (existing.talkReacts || []).slice();
   (incoming.talkReacts || []).forEach((r) => upsertById(talkReacts, r));
-  const fitVotes = (existing.fitVotes || []).slice();
-  (incoming.fitVotes || []).forEach((v) => upsertById(fitVotes, v));
-  const extraGrants = (existing.extraGrants || []).slice();
-  (incoming.extraGrants || []).forEach((g) => upsertById(extraGrants, g));
-  const rankWins = (existing.rankWins || []).slice();
-  (incoming.rankWins || []).forEach((w) => upsertById(rankWins, w));
-  const asks = (existing.asks || []).slice();
-  (incoming.asks || []).forEach((a) => upsertById(asks, a));
   const bomb = mergeBomb(existing && existing.bomb, incoming && incoming.bomb);
-  return { group, users, memberships, quests, guesses, comments, likes, talkReacts, fitVotes, extraGrants, rankWins, asks, bomb };
+  return { group, users, memberships, quests, guesses, comments, likes, talkReacts, bomb };
 }
 
 function parseGroup(data) {

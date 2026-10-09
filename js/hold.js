@@ -4,19 +4,27 @@ const HOLD_HINTS = ["家で使う", "外で使う", "勉強で使う", "食べ�
 
 const HOLD_BLUR = [28, 14, 4, 0];
 
-function nameHintFrom(answer) {
-  const text = String(answer || "").trim();
+function hasKanji(text) {
+  return /[\u3400-\u9fff\uf900-\ufaff々〆]/.test(String(text || ""));
+}
+
+function nameHintFrom(answer, reading) {
+  const text = String(reading || answer || "").trim();
   if (!text) return "";
   if (text.length < 2) return `短い名前で、「${text}」から始まります。`;
   return `「${text.slice(0, 1)}」から始まって、「${text.slice(-1)}」で終わります。`;
 }
 
-function holdGuessOk(text, answer) {
-  const guess = foldGuess(text);
+function holdGuessMatches(guess, answer) {
   const target = foldGuess(answer);
   if (!guess || !target) return false;
   if (guess === target) return true;
   return guess.length >= 2 && (target.includes(guess) || guess.includes(target));
+}
+
+function holdGuessOk(text, answer, reading) {
+  const guess = foldGuess(text);
+  return holdGuessMatches(guess, answer) || holdGuessMatches(guess, reading);
 }
 
 function loadImage(url) {
@@ -64,24 +72,49 @@ async function paintHoldCanvas(canvas, photoUrl, maskUrl, stage) {
 function mountMosaicEditor(host, photoUrl) {
   host.innerHTML = '<canvas class="hold-canvas" data-mosaic-view></canvas>';
   const view = host.querySelector("[data-mosaic-view]");
-  loadImage(photoUrl).then((photo) => {
+  Promise.all([loadImage(photoUrl), window.__mosaicMask ? loadImage(window.__mosaicMask) : null]).then(([photo, saved]) => {
     if (!photo) return;
     const size = fitSize(photo, 520);
     view.width = size.width;
     view.height = size.height;
+    const vctx = view.getContext("2d");
+    const blurred = document.createElement("canvas");
+    blurred.width = size.width;
+    blurred.height = size.height;
+    const bctx = blurred.getContext("2d");
+    bctx.filter = `blur(${HOLD_BLUR[0]}px)`;
+    bctx.drawImage(photo, 0, 0, size.width, size.height);
+    bctx.filter = "none";
     const mask = document.createElement("canvas");
     mask.width = size.width;
     mask.height = size.height;
     const mctx = mask.getContext("2d");
+    if (saved) mctx.drawImage(saved, 0, 0, size.width, size.height);
     mctx.lineCap = "round";
     mctx.lineJoin = "round";
     mctx.strokeStyle = "#fff";
     mctx.lineWidth = 46;
+    const layer = document.createElement("canvas");
+    layer.width = size.width;
+    layer.height = size.height;
+    const lctx = layer.getContext("2d");
     let drawing = false;
     let last = null;
-    const refresh = () => {
-      paintHoldCanvas(view, photoUrl, mask.toDataURL("image/png"), 0);
-      window.__mosaicMask = mask.toDataURL("image/png");
+    let queued = false;
+    const paint = () => {
+      queued = false;
+      lctx.globalCompositeOperation = "source-over";
+      lctx.clearRect(0, 0, size.width, size.height);
+      lctx.drawImage(blurred, 0, 0);
+      lctx.globalCompositeOperation = "destination-in";
+      lctx.drawImage(mask, 0, 0);
+      vctx.drawImage(photo, 0, 0, size.width, size.height);
+      vctx.drawImage(layer, 0, 0);
+    };
+    const schedule = () => {
+      if (queued) return;
+      queued = true;
+      window.requestAnimationFrame(paint);
     };
     const point = (event) => {
       const rect = view.getBoundingClientRect();
@@ -93,15 +126,22 @@ function mountMosaicEditor(host, photoUrl) {
     const stroke = (event) => {
       const now = point(event);
       mctx.beginPath();
-      if (last) mctx.moveTo(last.x, last.y);
-      else mctx.moveTo(now.x, now.y);
+      mctx.moveTo((last || now).x, (last || now).y);
       mctx.lineTo(now.x, now.y);
       mctx.stroke();
       last = now;
-      refresh();
+      schedule();
+    };
+    const finish = () => {
+      if (!drawing) return;
+      drawing = false;
+      window.__mosaicDrawing = false;
+      window.__mosaicMask = mask.toDataURL("image/png");
+      host.dispatchEvent(new CustomEvent("mosaicchange"));
     };
     view.addEventListener("pointerdown", (event) => {
       drawing = true;
+      window.__mosaicDrawing = true;
       last = null;
       view.setPointerCapture(event.pointerId);
       stroke(event);
@@ -109,10 +149,9 @@ function mountMosaicEditor(host, photoUrl) {
     view.addEventListener("pointermove", (event) => {
       if (drawing) stroke(event);
     });
-    view.addEventListener("pointerup", () => {
-      drawing = false;
-    });
-    refresh();
+    view.addEventListener("pointerup", finish);
+    view.addEventListener("pointercancel", finish);
+    paint();
   });
 }
 

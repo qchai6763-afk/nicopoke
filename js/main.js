@@ -404,7 +404,7 @@ function renderToday() {
     : "";
 
   const editor = `<div class="day-theme">
-         <p class="kicker">${quest.bonus ? "一位から、もう一枚" : "あなたの今日のお題"}</p>
+         <p class="kicker">${quest.bonus ? "もう一枚" : "あなたの今日のお題"}</p>
          <p class="day-theme-text">${escapeHtml(quest.categoryEmoji || "")} ${escapeHtml(quest.theme)}</p>
        </div>`;
 
@@ -425,6 +425,9 @@ function renderToday() {
          <label class="caption-label">持っているもの
            <input class="pill" data-secret maxlength="20" placeholder="例）ほうじ茶" value="${escapeHtml(window.__secretDraft || "")}" />
          </label>
+         <label class="caption-label" data-reading-row ${hasKanji(window.__secretDraft) ? "" : "hidden"}>よみがな（ひらがなで）
+           <input class="pill" data-reading maxlength="30" placeholder="例）ほうじちゃ" value="${escapeHtml(window.__readingDraft || "")}" />
+         </label>
          <p class="kicker">最初のヒント</p>
          <div class="chips">
            ${HOLD_HINTS.map(
@@ -436,6 +439,7 @@ function renderToday() {
            <button class="primary" type="button" data-confirm>この写真で送る</button>
            <button class="ghost" type="button" data-clear-preview>選びなおす</button>
          </div>
+         <p class="help" data-hold-msg></p>
        </div>`
       : `${photoPickHtml("quest")}
          <p class="help">カメラで撮るか、フォルダーから選べます。</p>`;
@@ -476,8 +480,13 @@ function renderToday() {
   });
   const host = app.querySelector("[data-mosaic-host]");
   if (host && window.__photoPreview) mountMosaicEditor(host, window.__photoPreview);
+  const readingRow = app.querySelector("[data-reading-row]");
   app.querySelector("[data-secret]")?.addEventListener("input", (e) => {
     window.__secretDraft = e.target.value;
+    if (readingRow) readingRow.hidden = !hasKanji(e.target.value);
+  });
+  app.querySelector("[data-reading]")?.addEventListener("input", (e) => {
+    window.__readingDraft = e.target.value;
   });
   app.querySelectorAll("[data-usage-hint]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -487,25 +496,40 @@ function renderToday() {
       });
     });
   });
+  const holdMsg = app.querySelector("[data-hold-msg]");
+  host?.addEventListener("mosaicchange", () => {
+    if (holdMsg) holdMsg.textContent = "";
+  });
   app.querySelector("[data-confirm]")?.addEventListener("click", () => {
     const secret = String(window.__secretDraft || "").trim();
-    if (!window.__photoPreview || !secret || !window.__usageHint) return;
-    if (!window.__mosaicMask) return;
+    const reading = hasKanji(secret) ? String(window.__readingDraft || "").trim() : "";
+    const missing = [];
+    if (!window.__mosaicMask) missing.push("写真を指でなぞってモザイクをかける");
+    if (!secret) missing.push("持っているものの名前を書く");
+    if (hasKanji(secret) && (!reading || hasKanji(reading))) missing.push("よみがなをひらがなで書く");
+    if (!window.__usageHint) missing.push("最初のヒントを選ぶ");
+    if (!window.__photoPreview || missing.length) {
+      if (holdMsg) holdMsg.textContent = `あと少し：${missing.join("、")}`;
+      return;
+    }
     postPhoto(quest.id, {
       photoDataUrl: window.__photoPreview,
       mosaicMask: window.__mosaicMask,
       secretAnswer: secret,
+      secretReading: reading,
       usageHint: window.__usageHint,
       caption: "",
     });
     window.__photoPreview = "";
     window.__secretDraft = "";
+    window.__readingDraft = "";
     window.__usageHint = "";
     window.__mosaicMask = "";
     go("/feed");
   });
   app.querySelector("[data-clear-preview]")?.addEventListener("click", () => {
     window.__photoPreview = "";
+    window.__mosaicMask = "";
     render();
   });
   app.querySelector("[data-enable-push]")?.addEventListener("click", () => enablePush());
@@ -618,98 +642,6 @@ function postCard(quest, viewerId) {
        </div>`
     : "";
 
-  const choiceLeft = !quest.secretAnswer && !mine && posted && !quest.revealed && !guessedRight(quest.id, viewerId) ? remainingChoices(quest, viewerId) : [];
-  const choiceUi =
-    !quest.secretAnswer && !mine && posted && guessedRight(quest.id, viewerId)
-      ? `<p class="guess-note ok">当たった。お題は「${escapeHtml(quest.theme)}」</p>`
-      : choiceLeft.length
-        ? `<div class="choice-box">
-             <p class="kicker">この写真のお題は？</p>
-             <div class="choice-grid">
-               ${choiceLeft
-                 .map(
-                   (t) =>
-                     `<button type="button" class="choice-btn" data-choice-guess="${quest.id}" data-choice-text="${escapeHtml(
-                       t
-                     )}">${escapeHtml(t)}</button>`
-                 )
-                 .join("")}
-             </div>
-             <p class="help">外すと、この写真の人が順位で有利になる。外したボタンは消える。</p>
-           </div>`
-        : "";
-  const askedRows = !mine && posted ? asksFor(quest.id, viewerId) : [];
-  const askQuota = !mine && posted && !quest.revealed && !guessedRight(quest.id, viewerId) ? missCountFor(quest.id, viewerId) : 0;
-  const askedIds = {};
-  askedRows.forEach((row) => {
-    askedIds[row.questionId] = row;
-  });
-  const askPool = shuffleSeeded(ASK_QUESTIONS || [], `${quest.id}:ask`);
-  const askLeft = askPool.filter((q) => !askedIds[q.id]).slice(0, 4);
-  const askUi =
-    !quest.secretAnswer && !mine && posted && !guessedRight(quest.id, viewerId)
-      ? `<div class="choice-box">
-           <p class="kicker">質問 ${askedRows.length} / ${askQuota}</p>
-           ${askedRows
-             .map((row) => {
-               const q = questionById(row.questionId);
-               return `<p class="talk-line">${escapeHtml(q ? q.text : "")}　${row.answer ? "はい" : "いいえ"}</p>`;
-             })
-             .join("")}
-           ${
-             askedRows.length < askQuota
-               ? `<div class="choice-grid">${askLeft
-                   .map(
-                     (q) =>
-                       `<button type="button" class="choice-btn" data-ask="${quest.id}" data-ask-id="${escapeHtml(
-                         q.id
-                       )}">${escapeHtml(q.text)}</button>`
-                   )
-                   .join("")}</div>`
-               : `<p class="help">${askQuota ? "質問を使い切りました。もう1回外すと、1つ増えます。" : "六択を1回外すと、質問が1つ増えます。答えは自動で、はい／いいえです。"}</p>`
-           }
-         </div>`
-      : "";
-  const groupNow = currentGroup();
-  const leaderNow = groupNow && quest.date === todayKey() ? dayRank(groupNow.id, quest.date).leader : null;
-  const alreadyGranted = groupNow ? grantedExtraToday(groupNow.id, viewerId) : null;
-  const grantUi =
-    posted && leaderNow && leaderNow.userId === viewerId && !mine && quest.date === todayKey()
-      ? alreadyGranted
-        ? `<p class="help">もう一枚は、${escapeHtml(userById(alreadyGranted.toUserId)?.shortName || "")}さんに送った。</p>`
-        : `<button type="button" class="talk-btn" data-grant-extra="${quest.userId}">もう一枚送っていい</button>`
-      : "";
-  const fitVotes = fitVotesFor(quest.id);
-  const yesVotes = fitVotes.filter((v) => v.choice === "yes");
-  const noVotes = fitVotes.filter((v) => v.choice === "no");
-  const myFit = fitVotes.find((v) => v.userId === viewerId);
-  const fitNames = (list) =>
-    list
-      .map((v) => userById(v.userId)?.shortName)
-      .filter(Boolean)
-      .join("・");
-  const fitCheck = posted
-    ? quest.revealed
-      ? `<div class="fit-check">
-           <p class="kicker">答えと写真、関係ある？</p>
-           <p class="fit-answer">答え：${escapeHtml(quest.theme)}</p>
-           <div class="talk-btns fit-btns">
-             <button type="button" class="talk-btn ${myFit && myFit.choice === "yes" ? "on" : ""}" data-fit-vote="${quest.id}" data-fit-choice="yes" ${mine ? "disabled" : ""}>関係ある</button>
-             <button type="button" class="talk-btn no ${myFit && myFit.choice === "no" ? "on" : ""}" data-fit-vote="${quest.id}" data-fit-choice="no" ${mine ? "disabled" : ""}>関係ない</button>
-           </div>
-           <p class="talk-sum">${yesVotes.length ? `${escapeHtml(fitNames(yesVotes))}が関係ある` : "関係ある　まだなし"}　${noVotes.length ? `${escapeHtml(fitNames(noVotes))}が関係ない` : "関係ない　まだなし"}</p>
-           ${
-             noVotes.length > yesVotes.length
-               ? `<p class="fit-warn">関係ない、という票のほうが多いです。</p>`
-               : `<p class="help">${mine ? "自分の写真には投票できません。" : "システムが出したお題と、この写真が合っているかを押してください。"}</p>`
-           }
-         </div>`
-      : `<div class="fit-check">
-           <button type="button" class="talk-btn" data-reveal="${quest.id}">答えを発表する</button>
-           <p class="help">発表すると、お題と写真が関係あるかをみんなで投票できます。お題は、送った人が書いたものではなく、システムが決めたものです。</p>
-         </div>`
-    : "";
-
   const talkUi = posted
     ? `<div class="talk">
          <p class="kicker">おしゃべり</p>
@@ -775,10 +707,6 @@ function postCard(quest, viewerId) {
       ${captionLine}
       ${mine && quest.secretAnswer ? `<p class="theme-mine">あなたが書いた答え　${escapeHtml(quest.secretAnswer)}</p>` : ""}
       ${holdUi}
-      ${choiceUi}
-      ${askUi}
-      ${grantUi}
-      ${fitCheck}
       ${talkAsk}
       ${
         posted
@@ -834,35 +762,19 @@ function bindFeedActions() {
   app.querySelectorAll("[data-talk-follow]").forEach((btn) => {
     btn.addEventListener("click", () => setTalkFollow(btn.dataset.talkFollow, btn.dataset.talkFollowChoice));
   });
-  app.querySelectorAll("[data-reveal]").forEach((btn) => {
-    btn.addEventListener("click", () => revealTheme(btn.dataset.reveal));
-  });
-  app.querySelectorAll("[data-fit-vote]").forEach((btn) => {
-    btn.addEventListener("click", () => setFitVote(btn.dataset.fitVote, btn.dataset.fitChoice));
-  });
-  app.querySelectorAll("[data-choice-guess]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const guess = submitChoiceGuess(btn.dataset.choiceGuess, btn.dataset.choiceText);
-      if (!guess) return;
-      playResultTone(guess.correct);
-    });
-  });
-  app.querySelectorAll("[data-ask]").forEach((btn) => {
-    btn.addEventListener("click", () => askQuestion(btn.dataset.ask, btn.dataset.askId));
-  });
   app.querySelectorAll("[data-hold-guess]").forEach((form) => {
     form.addEventListener("submit", (e) => {
       e.preventDefault();
-      submitHoldGuess(form.dataset.holdGuess, new FormData(form).get("guess"));
+      const guess = submitHoldGuess(form.dataset.holdGuess, new FormData(form).get("guess"));
+      if (!guess) return;
+      if (guess.correct) playFanfare();
+      else playResultTone(false);
     });
   });
   app.querySelectorAll("[data-hold-giveup]").forEach((btn) => {
     btn.addEventListener("click", () => giveUpHold(btn.dataset.holdGiveup));
   });
   paintHoldCards();
-  app.querySelectorAll("[data-grant-extra]").forEach((btn) => {
-    btn.addEventListener("click", () => grantExtraPhoto(btn.dataset.grantExtra));
-  });
   bindDeletePost(app);
   app.querySelectorAll("[data-toggle-comments]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -915,16 +827,10 @@ function renderFeed() {
   const isLatest = viewDate === postedDates[0];
   const isOldest = window.__feedDateIndex >= postedDates.length - 1;
   const quests = all.filter((q) => q.date === viewDate && (q.date === today || isPosted(q)));
-  const rank = viewDate === today ? dayRank(group.id, viewDate) : { rows: [], leader: null };
-  const leaderId = rank.leader ? rank.leader.userId : "";
   const ordered = quests
     .filter((q) => q.userId !== user.id || isPosted(q))
     .slice()
-    .sort((a, b) => {
-      if (a.userId === leaderId && b.userId !== leaderId) return -1;
-      if (b.userId === leaderId && a.userId !== leaderId) return 1;
-      return (b.postedAt || 0) - (a.postedAt || 0);
-    });
+    .sort((a, b) => (b.postedAt || 0) - (a.postedAt || 0));
   const board = viewDate === today ? todayBoard(group.id) : [];
   const top = board[0];
   const fun = board.flatMap((b) => b.comments.map((c) => ({ ...c, owner: b.user }))).sort((a, b) => b.at - a.at)[0];
@@ -940,32 +846,6 @@ function renderFeed() {
         <button type="button" class="time-btn" data-feed-newer ${isLatest ? "disabled" : ""}>最新へ →</button>
       </div>
       ${viewDate === today ? statusRow(group, user.id) : ""}
-      ${
-        viewDate === today
-          ? `<div class="day-theme">
-               <p class="kicker">今日の順位</p>
-               <p class="day-theme-text">${
-                 rank.leader
-                   ? `1位　${escapeHtml(rank.leader.user.name)}　外された ${rank.leader.misses}回`
-                   : "まだだれも外していません"
-               }</p>
-               ${
-                 rank.rows.length
-                   ? `<ol class="rank-list">${rank.rows
-                       .map(
-                         (row, i) =>
-                           `<li><b>${i + 1}</b> ${escapeHtml(row.user.shortName)}　外された ${row.misses}　通算 ${winCount(
-                             group.id,
-                             row.userId
-                           )}回</li>`
-                       )
-                       .join("")}</ol>`
-                   : ""
-               }
-               <p class="help">外された回数が多い人ほど上。同じ回数なら、その日の運で並ぶ。一位の写真が一番上に出る。</p>
-             </div>`
-          : ""
-      }
       ${
         top
           ? `<div class="board">
@@ -1004,7 +884,6 @@ function renderFeed() {
     render();
   });
   bindFeedActions();
-  if (viewDate === today) noteCrown(rank.leader ? rank.leader.userId : "");
 }
 
 function renderMe() {
@@ -1373,17 +1252,6 @@ function playFanfare() {
     /* ignore */
   }
 }
-
-function noteCrown(userId) {
-  const next = userId || "";
-  if (window.__heardCrown == null) {
-    window.__heardCrown = next;
-    return;
-  }
-  if (next && next !== window.__heardCrown) playFanfare();
-  window.__heardCrown = next;
-}
-
 document.addEventListener(
   "pointerdown",
   (e) => {
@@ -1448,25 +1316,32 @@ async function enablePush() {
   render();
 }
 
+function userIsEditing() {
+  if (window.__mosaicDrawing) return true;
+  const el = document.activeElement;
+  return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA");
+}
+
+function renderAfterSync(changed) {
+  if (changed) window.__pendingSyncRender = true;
+  if (!window.__pendingSyncRender || userIsEditing()) return;
+  window.__pendingSyncRender = false;
+  render();
+}
+
 boot();
 refreshFromCloud().then((changed) => {
-  if (changed) render();
+  renderAfterSync(changed);
   paintTutorial();
 });
 window.setInterval(() => {
   if (route() === "brain") return;
-  refreshFromCloud().then((changed) => {
-    if (changed) render();
-  });
+  refreshFromCloud().then(renderAfterSync);
 }, 3000);
 window.addEventListener("focus", () => {
-  refreshFromCloud().then((changed) => {
-    if (changed) render();
-  });
+  refreshFromCloud().then(renderAfterSync);
 });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState !== "visible") return;
-  refreshFromCloud().then((changed) => {
-    if (changed) render();
-  });
+  refreshFromCloud().then(renderAfterSync);
 });
