@@ -193,7 +193,23 @@ function load() {
 let state = load();
 
 function persist() {
-  localStorage.setItem(storageKey(), JSON.stringify(state));
+  try {
+    localStorage.setItem(storageKey(), JSON.stringify(state));
+  } catch {
+    try {
+      const light = Object.assign({}, state, {
+        quests: (state.quests || []).map((q) =>
+          Object.assign({}, q, {
+            photoDataUrl: q.date === todayKey() ? q.photoDataUrl : "",
+            mosaicMask: q.date === todayKey() ? q.mosaicMask : "",
+          })
+        ),
+      });
+      localStorage.setItem(storageKey(), JSON.stringify(light));
+    } catch {
+      /* storage full */
+    }
+  }
 }
 
 function getState() {
@@ -441,7 +457,15 @@ function pickQuest(local, incoming) {
     });
   }
   if (localLive && incomingLive) {
-    return stamp(incoming.postedAt) > stamp(local.postedAt) ? incoming : local;
+    const newer = stamp(incoming.postedAt) > stamp(local.postedAt) ? incoming : local;
+    const older = newer === incoming ? local : incoming;
+    return Object.assign({}, newer, {
+      mosaicMask: newer.mosaicMask || older.mosaicMask || "",
+      secretAnswer: newer.secretAnswer || older.secretAnswer || "",
+      secretReading: newer.secretReading || older.secretReading || "",
+      usageHint: newer.usageHint || older.usageHint || "",
+      nameHint: newer.nameHint || older.nameHint || "",
+    });
   }
   const themeSrc = stamp(incoming.themeAt) >= stamp(local.themeAt) ? incoming : local;
   return applyThemeFields(Object.assign({}, themeSrc), themeSrc);
@@ -532,9 +556,45 @@ function setGroupBomb(bomb) {
   notify();
 }
 
+function mediaStamp(value) {
+  const text = String(value || "");
+  if (!text) return "0";
+  return `${text.length}:${text.charCodeAt(Math.min(64, text.length - 1))}:${text.charCodeAt(text.length - 1)}`;
+}
+
+function groupSyncStamp(groupId) {
+  const snap = snapshotForGroup(groupId);
+  if (!snap) return "";
+  return JSON.stringify({
+    group: snap.group,
+    users: (snap.users || []).map((u) => [u.id, u.name, u.shortName, mediaStamp(u.photo), u.left]),
+    memberships: snap.memberships || [],
+    quests: (snap.quests || []).map((q) => [
+      q.id,
+      q.theme,
+      q.postedAt,
+      q.deletedAt,
+      q.caption,
+      q.secretAnswer,
+      q.secretReading,
+      q.usageHint,
+      q.nameHint,
+      mediaStamp(q.photoDataUrl),
+      mediaStamp(q.mosaicMask),
+      q.revealed,
+      q.bonus,
+    ]),
+    guesses: snap.guesses || [],
+    comments: snap.comments || [],
+    likes: snap.likes || [],
+    talkReacts: snap.talkReacts || [],
+    bomb: snap.bomb || null,
+  });
+}
+
 function mergeSnapshot(snap) {
   if (!snap || !snap.group) return false;
-  const before = JSON.stringify(snapshotForGroup(snap.group.id) || {});
+  const before = groupSyncStamp(snap.group.id);
   const incoming = snap.group;
   incoming.code = normalizeCode(incoming.code);
   incoming.memberIds = Array.from(new Set(incoming.memberIds || []));
@@ -570,7 +630,7 @@ function mergeSnapshot(snap) {
   if (!state.talkReacts) state.talkReacts = [];
   (snap.talkReacts || []).forEach((r) => upsertById(state.talkReacts, r));
   if (snap.bomb) state.bomb = mergeBomb(state.bomb, snap.bomb);
-  const after = JSON.stringify(snapshotForGroup(incoming.id) || {});
+  const after = groupSyncStamp(incoming.id);
   return before !== after;
 }
 
@@ -583,6 +643,7 @@ function toLightSnapshot(snap) {
     quests: (snap.quests || []).map((q) =>
       Object.assign({}, q, {
         photoDataUrl: "",
+        mosaicMask: "",
         hasPhoto: Boolean(q.photoDataUrl) && stamp(q.postedAt) > stamp(q.deletedAt),
       })
     ),
@@ -820,33 +881,36 @@ function ensureTodayQuests(groupId) {
   const date = todayKey();
   const members = groupMembers(groupId);
   const fields = holdFields(date);
+  let changed = false;
   members.forEach((member) => {
     const exists = state.quests.find(
       (q) => q.groupId === groupId && q.userId === member.id && q.date === date && !q.bonus
     );
     if (!exists) {
-        state.quests.push(
-          Object.assign(
-            {
-              id: `q-${member.id}-${date}`,
-              groupId,
-              userId: member.id,
-              date,
-              themeAt: Date.now(),
-              rerollsUsed: 0,
-              photoDataUrl: "",
-              caption: "",
-              revealed: false,
-              postedAt: null,
-            },
-            fields
-          )
-        );
+      state.quests.push(
+        Object.assign(
+          {
+            id: `q-${member.id}-${date}`,
+            groupId,
+            userId: member.id,
+            date,
+            themeAt: Date.now(),
+            rerollsUsed: 0,
+            photoDataUrl: "",
+            caption: "",
+            revealed: false,
+            postedAt: null,
+          },
+          fields
+        )
+      );
+      changed = true;
     } else if (!isPosted(exists) && exists.theme !== fields.theme) {
       Object.assign(exists, fields, { themeAt: Date.now() });
+      changed = true;
     }
   });
-  persist();
+  if (changed) persist();
 }
 
 function questsForGroup(groupId) {

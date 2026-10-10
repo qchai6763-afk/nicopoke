@@ -166,8 +166,8 @@ async function decodePhoto(file) {
 }
 
 function compressPhoto(file, done) {
-  const max = 720;
-  const quality = 0.7;
+  const max = 560;
+  const quality = 0.72;
   decodePhoto(file)
     .then(({ img, orientation, close }) => {
       const natural = orientedSize(img.width, img.height, orientation);
@@ -568,27 +568,32 @@ function renderToday() {
       : `${photoPickHtml("quest")}
          <p class="help">カメラで撮るか、フォルダーから選べます。</p>`;
 
+  const editingPhoto = Boolean(preview) && !posted;
   app.innerHTML = chrome(
     `
-      ${statusRow(group, user.id)}
-      ${riskNote}
+      ${editingPhoto ? "" : statusRow(group, user.id)}
+      ${editingPhoto ? "" : riskNote}
       ${
-        todayScreen(user.id)
+        editingPhoto || todayScreen(user.id)
           ? ""
           : `<a class="notice check-cta" href="#/brain/check">今日の脳の元気予報をしませんか<small>診断ではありません。文字や数字を自分で入れる、やさしい6問です。</small></a>`
       }
-      ${learnCtaHtml()}
-      <div class="streak ${streak ? "pulse" : ""}">${escapeHtml(streakLabel(streak))}</div>
+      ${editingPhoto ? "" : learnCtaHtml()}
+      ${editingPhoto ? "" : `<div class="streak ${streak ? "pulse" : ""}">${escapeHtml(streakLabel(streak))}</div>`}
       <p class="kicker">${formatDateLabel(todayKey())}　今日の一枚</p>
       ${
-        posted
+        posted || editingPhoto
           ? ""
           : `<p class="help">${escapeHtml(holdHelp(quest.date))}</p>`
       }
       ${editor}
       ${stage}
-      <button type="button" class="ghost" data-enable-push>通知を受け取る</button>
-      <p class="help">${escapeHtml(window.__pushMsg || "iPhoneは「ホーム画面に追加」すると、アプリを閉じていても写真の通知が届きます。")}</p>
+      ${
+        editingPhoto
+          ? ""
+          : `<button type="button" class="ghost" data-enable-push>通知を受け取る</button>
+      <p class="help">${escapeHtml(window.__pushMsg || "iPhoneは「ホーム画面に追加」すると、アプリを閉じていても写真の通知が届きます。")}</p>`
+      }
     `,
     "today"
   );
@@ -1294,6 +1299,15 @@ window.addEventListener("hashchange", () => {
   paintTutorial();
 });
 window.addEventListener("hidamari-change", () => {
+  if (window.__photoPreview || window.__mosaicDrawing) {
+    window.__pendingSyncRender = true;
+    return;
+  }
+  const el = document.activeElement;
+  if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) {
+    window.__pendingSyncRender = true;
+    return;
+  }
   render();
   paintTutorial();
 });
@@ -1441,7 +1455,7 @@ async function enablePush() {
 }
 
 function userIsEditing() {
-  if (window.__mosaicDrawing) return true;
+  if (window.__mosaicDrawing || window.__photoPreview) return true;
   const el = document.activeElement;
   return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA");
 }
@@ -1459,9 +1473,9 @@ refreshFromCloud().then((changed) => {
   paintTutorial();
 });
 window.setInterval(() => {
-  if (route() === "brain") return;
+  if (route() === "brain" || userIsEditing()) return;
   refreshFromCloud().then(renderAfterSync);
-}, 3000);
+}, 8000);
 window.addEventListener("focus", () => {
   refreshFromCloud().then(renderAfterSync);
 });
