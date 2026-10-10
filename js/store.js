@@ -1058,14 +1058,18 @@ function streakAtRisk(userId) {
   return dates.has(yest) && !dates.has(today);
 }
 
+function holdGuessesFor(questId, userId) {
+  return guessesFor(questId).filter((g) => g.userId === userId && g.hold);
+}
+
 function holdProgress(quest, userId) {
-  const list = guessesFor(quest.id).filter((g) => g.userId === userId);
-  const wrong = list.filter((g) => !g.correct && !g.gaveUp).length;
+  const list = holdGuessesFor(quest.id, userId);
+  const wrong = list.filter((g) => !g.correct && !g.reveal).length;
   const solved = list.some((g) => g.correct);
-  const gaveUp = list.some((g) => g.gaveUp);
-  const over = solved || gaveUp || wrong >= 3;
-  const stage = over ? 3 : wrong;
-  return { wrong, solved, gaveUp, over, stage };
+  const revealed = list.some((g) => g.reveal);
+  const over = solved || revealed;
+  const stage = over ? 3 : Math.min(2, wrong);
+  return { wrong, solved, revealed, over, stage };
 }
 
 function submitHoldGuess(questId, text) {
@@ -1080,6 +1084,7 @@ function submitHoldGuess(questId, text) {
     questId,
     userId: user.id,
     text: guessText,
+    hold: true,
     correct: holdGuessOk(guessText, quest.secretAnswer, quest.secretReading),
     at: Date.now(),
   };
@@ -1088,7 +1093,7 @@ function submitHoldGuess(questId, text) {
   return guess;
 }
 
-function giveUpHold(questId) {
+function revealHoldAnswer(questId) {
   const user = currentUser();
   const quest = getQuest(questId);
   if (!user || !quest || !quest.secretAnswer || quest.userId === user.id) return;
@@ -1099,11 +1104,16 @@ function giveUpHold(questId) {
     questId,
     userId: user.id,
     text: "",
+    hold: true,
     correct: false,
-    gaveUp: true,
+    reveal: true,
     at: Date.now(),
   });
   notify();
+}
+
+function giveUpHold(questId) {
+  revealHoldAnswer(questId);
 }
 
 function postPhoto(questId, { photoDataUrl, caption, mosaicMask, secretAnswer, secretReading, usageHint }) {

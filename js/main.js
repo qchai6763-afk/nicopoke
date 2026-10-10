@@ -258,6 +258,68 @@ function photoPickHtml(kind) {
     </div>`;
 }
 
+const PHOTO_DRAFT_KEY = "nicopoke-photo-draft-v1";
+
+function photoDraftStorageKey() {
+  const user = currentUser();
+  const group = currentGroup();
+  return namespacedKey(`${PHOTO_DRAFT_KEY}:${group?.id || "x"}:${user?.id || "x"}:${todayKey()}`);
+}
+
+function savePhotoDraft() {
+  try {
+    const photo = window.__photoPreview || "";
+    const key = photoDraftStorageKey();
+    if (!photo) {
+      localStorage.removeItem(key);
+      return;
+    }
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        photo,
+        mask: window.__mosaicMask || "",
+        secret: window.__secretDraft || "",
+        reading: window.__readingDraft || "",
+        hint: window.__usageHint || "",
+        at: Date.now(),
+      })
+    );
+  } catch {
+    /* storage full */
+  }
+}
+
+function loadPhotoDraft() {
+  if (window.__photoPreview) return;
+  try {
+    const raw = localStorage.getItem(photoDraftStorageKey());
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (!data || !data.photo) return;
+    window.__photoPreview = data.photo;
+    window.__mosaicMask = data.mask || "";
+    window.__secretDraft = data.secret || "";
+    window.__readingDraft = data.reading || "";
+    window.__usageHint = data.hint || "";
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearPhotoDraft() {
+  window.__photoPreview = "";
+  window.__mosaicMask = "";
+  window.__secretDraft = "";
+  window.__readingDraft = "";
+  window.__usageHint = "";
+  try {
+    localStorage.removeItem(photoDraftStorageKey());
+  } catch {
+    /* ignore */
+  }
+}
+
 function ago(ts) {
   if (!ts) return "まだ";
   const m = Math.max(1, Math.round((Date.now() - ts) / 60000));
@@ -527,6 +589,8 @@ function renderToday() {
     ? `<div class="notice risk-note">🔥 ${streak}日連続が、今日で途切れそうです<small>いま一枚送ると、記録がつながります。</small></div>`
     : "";
 
+  loadPhotoDraft();
+
   const editor = `<div class="day-theme">
          <p class="kicker">${quest.bonus ? "もう一枚" : "あなたの今日のお題"}</p>
          <p class="day-theme-text">${escapeHtml(quest.categoryEmoji || "")} ${escapeHtml(quest.theme)}</p>
@@ -544,15 +608,24 @@ function renderToday() {
        <a class="ghost" href="#/brain">脳トレで息抜き</a>`
     : preview
       ? `<div class="hold-editor">
+         <div class="hold-steps">
+           <p class="kicker">送りかた</p>
+           <ol class="hold-step-list">
+             <li>写真の上を指でなぞって、モザイクをかける</li>
+             <li>持っているものの名前を書く</li>
+             <li>最初のヒントを1つ選ぶ</li>
+             <li>「この写真で送る」を押す</li>
+           </ol>
+         </div>
          <div data-mosaic-host></div>
-         <p class="help">持っているものの上を、指でなぞって隠します。</p>
+         <p class="help">白い線のところがモザイクになります。隠したいところをなぞってください。</p>
          <label class="caption-label">持っているもの
            <input class="pill" data-secret maxlength="20" placeholder="例）ほうじ茶" value="${escapeHtml(window.__secretDraft || "")}" />
          </label>
          <label class="caption-label" data-reading-row ${hasKanji(window.__secretDraft) ? "" : "hidden"}>よみがな（ひらがなで）
            <input class="pill" data-reading maxlength="30" placeholder="例）ほうじちゃ" value="${escapeHtml(window.__readingDraft || "")}" />
          </label>
-         <p class="kicker">最初のヒント</p>
+         <p class="kicker">家族に出す、最初のヒント</p>
          <div class="chips">
            ${HOLD_HINTS.map(
              (hint) =>
@@ -564,9 +637,10 @@ function renderToday() {
            <button class="ghost" type="button" data-clear-preview>選びなおす</button>
          </div>
          <p class="help" data-hold-msg></p>
+         <p class="help">途中でアプリを閉じても、この写真はスマホの中に残ります。</p>
        </div>`
       : `${photoPickHtml("quest")}
-         <p class="help">カメラで撮るか、フォルダーから選べます。</p>`;
+         <p class="help">カメラで撮るか、フォルダーから選べます。撮ったあとは、指でモザイクをかけます。</p>`;
 
   const editingPhoto = Boolean(preview) && !posted;
   app.innerHTML = chrome(
@@ -604,6 +678,7 @@ function renderToday() {
     compressPhoto(file, (url) => {
       window.__photoPreview = url;
       window.__mosaicMask = "";
+      savePhotoDraft();
       render();
     });
   });
@@ -613,9 +688,11 @@ function renderToday() {
   app.querySelector("[data-secret]")?.addEventListener("input", (e) => {
     window.__secretDraft = e.target.value;
     if (readingRow) readingRow.hidden = !hasKanji(e.target.value);
+    savePhotoDraft();
   });
   app.querySelector("[data-reading]")?.addEventListener("input", (e) => {
     window.__readingDraft = e.target.value;
+    savePhotoDraft();
   });
   app.querySelectorAll("[data-usage-hint]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -623,10 +700,12 @@ function renderToday() {
       app.querySelectorAll("[data-usage-hint]").forEach((el) => {
         el.classList.toggle("on", el.dataset.usageHint === window.__usageHint);
       });
+      savePhotoDraft();
     });
   });
   const holdMsg = app.querySelector("[data-hold-msg]");
   host?.addEventListener("mosaicchange", () => {
+    savePhotoDraft();
     if (holdMsg) holdMsg.textContent = "";
   });
   app.querySelector("[data-confirm]")?.addEventListener("click", () => {
@@ -649,16 +728,11 @@ function renderToday() {
       usageHint: window.__usageHint,
       caption: "",
     });
-    window.__photoPreview = "";
-    window.__secretDraft = "";
-    window.__readingDraft = "";
-    window.__usageHint = "";
-    window.__mosaicMask = "";
+    clearPhotoDraft();
     go("/feed");
   });
   app.querySelector("[data-clear-preview]")?.addEventListener("click", () => {
-    window.__photoPreview = "";
-    window.__mosaicMask = "";
+    clearPhotoDraft();
     render();
   });
   app.querySelector("[data-enable-push]")?.addEventListener("click", () => enablePush());
@@ -808,18 +882,26 @@ function postCard(quest, viewerId) {
   const holdUi =
     quest.secretAnswer && !mine && posted
       ? hold.over
-        ? `<div class="choice-box"><p class="guess-note">${hold.solved ? "当たり" : "ゲームオーバー"}</p><p class="fit-answer">答え：${escapeHtml(quest.secretAnswer)}</p></div>`
+        ? `<div class="choice-box"><p class="guess-note">${hold.solved ? "当たり！" : "答えをみました"}</p><p class="fit-answer">答え：${escapeHtml(quest.secretAnswer)}</p></div>`
         : `<div class="choice-box">
+            <p class="kicker">なにを持ってる？</p>
             <p class="help">ヒント：${escapeHtml(quest.usageHint || "")}</p>
-            ${hold.stage >= 1 ? `<p class="help">名前のヒント：${escapeHtml(quest.nameHint || "")}</p>` : ""}
+            ${
+              hold.wrong >= 1
+                ? `<p class="help">名前のヒント：${escapeHtml(quest.nameHint || "")}</p><p class="guess-note">おしい！もう一度どうぞ。</p>`
+                : `<p class="help">まずはヒントだけ見て、当ててみてください。</p>`
+            }
             <form class="composer" data-hold-guess="${quest.id}">
               <div class="actions">
                 <input class="pill" name="guess" maxlength="30" placeholder="なにを持ってる？" />
                 <button class="pill-btn" type="submit">答える</button>
               </div>
             </form>
-            <button type="button" class="ghost" data-hold-giveup="${quest.id}">モザイクを外す</button>
-            <p class="help">いま ${hold.stage + 1} 回目。あと ${3 - hold.wrong} 回。モザイクを外すとゲームオーバーです。</p>
+            ${
+              hold.wrong >= 2
+                ? `<button type="button" class="ghost" data-hold-reveal="${quest.id}">答えをみる</button>`
+                : ""
+            }
           </div>`
       : "";
 
@@ -900,8 +982,8 @@ function bindFeedActions() {
       else playResultTone(false);
     });
   });
-  app.querySelectorAll("[data-hold-giveup]").forEach((btn) => {
-    btn.addEventListener("click", () => giveUpHold(btn.dataset.holdGiveup));
+  app.querySelectorAll("[data-hold-reveal]").forEach((btn) => {
+    btn.addEventListener("click", () => revealHoldAnswer(btn.dataset.holdReveal));
   });
   paintHoldCards();
   bindDeletePost(app);
@@ -1114,7 +1196,7 @@ function renderMe() {
   );
   bindTop();
   app.querySelector("[data-logout]")?.addEventListener("click", () => {
-    window.__photoPreview = "";
+    clearPhotoDraft();
     logout();
     go("/login");
   });
@@ -1132,7 +1214,7 @@ function renderMe() {
       render();
       return;
     }
-    window.__photoPreview = "";
+    clearPhotoDraft();
     go("/login");
   });
   app.querySelector("[data-copy-code]")?.addEventListener("click", async () => {
@@ -1189,7 +1271,7 @@ function render() {
   return renderToday();
 }
 
-const TUTORIAL_KEY = "nicopoke-tutorial-v1";
+const TUTORIAL_KEY = "nicopoke-tutorial-v2";
 
 function tutorialSeen() {
   try {
@@ -1213,25 +1295,25 @@ function tutorialSlides() {
       img: "img/learn-aging.png",
       alt: "にこぽけのやさしい脳のイラスト",
       title: "にこぽけへようこそ",
-      text: "病院・老人ホーム・認知症予防の教室をきっかけに、家族で写真と脳トレを続けるアプリです。",
+      text: "病院・老人ホーム・認知症予防の教室をきっかけに、家族で今日の一枚を送り合うアプリです。",
     },
     {
       img: "img/brain-intro-memory.png",
       alt: "家族の写真カードのイラスト",
-      title: "今日の一枚を送る",
-      text: "下の「今日」から、その曜日のお題で写真を送ります。1つだけ近くで撮って、隠したいところをなぞってください。",
+      title: "1. お題のものを撮る",
+      text: "「今日」を開くと、曜日ごとのお題が出ます。物を1つだけ、近くで撮るか、フォルダーから選びます。",
     },
     {
       img: "img/brain-intro-order.png",
-      alt: "数字タッチで遊んでいるイラスト",
-      title: "息抜きの脳トレ",
-      text: "「息抜き」には数字タッチやかたち合わせがあります。難易度は簡単・普通・難しいから選べます。",
+      alt: "指でなぞるイラスト",
+      title: "2. 指でモザイクをかける",
+      text: "写真の上を指でなぞると、そこだけモザイク（マス目）になります。隠したいところをなぞってから送ります。",
     },
     {
       img: "img/learn-train.png",
-      alt: "脳トレと会話で頭がつながるイラスト",
-      title: "読みものもあります",
-      text: "認知症の仕組み・予防・前触れを、イラストつきで読めます。準備ができたら「はじめる」を押してください。",
+      alt: "家族が話しているイラスト",
+      title: "3. 家族が当てて話す",
+      text: "家族はヒントを見て答えます。外しても答えはすぐ出ません。当てたあと、おしゃべりがはじまります。",
     },
   ];
 }

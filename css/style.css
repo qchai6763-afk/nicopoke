@@ -981,6 +981,24 @@ a.ghost {
   background: #fff;
 }
 
+.hold-steps {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #fff7d6;
+}
+
+.hold-step-list {
+  margin: 6px 0 0;
+  padding-left: 1.3em;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.hold-step-list li {
+  margin: 4px 0;
+}
+
 .talk-sum {
   margin: 8px 0 0;
   font-weight: 700;
