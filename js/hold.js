@@ -47,8 +47,13 @@ const HOLD_THEME = HOLD_DAYS[1].theme;
 
 const HOLD_HINTS = ["家で使う", "外で使う", "勉強で使う", "食べるもの", "飲むもの", "着るもの", "遊ぶもの", "仕事で使う"];
 
+/** Block size for mosaic. Larger = harder to see. 0 = clear. */
+const HOLD_PIXEL = [22, 12, 6, 0];
+
 function holdForKey(iso) {
-  const [y, m, d] = String(iso || "").split("-").map(Number);
+  const [y, m, d] = String(iso || "")
+    .split("-")
+    .map(Number);
   const date = y && m && d ? new Date(y, m - 1, d) : new Date();
   return HOLD_DAYS[date.getDay()] || HOLD_DAYS[1];
 }
@@ -68,8 +73,6 @@ function holdHelp(iso) {
   const hold = holdForKey(iso);
   return `1つだけ、近くで撮って、隠したいところをなぞってください。${hold.help}`;
 }
-
-const HOLD_BLUR = [28, 14, 4, 0];
 
 function hasKanji(text) {
   return /[\u3400-\u9fff\uf900-\ufaff々〆]/.test(String(text || ""));
@@ -96,6 +99,10 @@ function holdGuessOk(text, answer, reading) {
 
 function loadImage(url) {
   return new Promise((resolve) => {
+    if (!url) {
+      resolve(null);
+      return;
+    }
     const img = new Image();
     img.onload = () => resolve(img);
     img.onerror = () => resolve(null);
@@ -111,47 +118,75 @@ function fitSize(img, max) {
   };
 }
 
+function makePixelLayer(photo, width, height, block) {
+  const layer = document.createElement("canvas");
+  layer.width = width;
+  layer.height = height;
+  if (!block) return layer;
+  const tw = Math.max(1, Math.floor(width / block));
+  const th = Math.max(1, Math.floor(height / block));
+  const tiny = document.createElement("canvas");
+  tiny.width = tw;
+  tiny.height = th;
+  const tctx = tiny.getContext("2d");
+  tctx.imageSmoothingEnabled = true;
+  tctx.drawImage(photo, 0, 0, tw, th);
+  const lctx = layer.getContext("2d");
+  lctx.imageSmoothingEnabled = false;
+  lctx.drawImage(tiny, 0, 0, width, height);
+  return layer;
+}
+
+function composeMosaic(viewCtx, photo, pixelLayer, maskCanvas, width, height) {
+  viewCtx.clearRect(0, 0, width, height);
+  viewCtx.drawImage(photo, 0, 0, width, height);
+  if (!maskCanvas || !pixelLayer) return;
+  const cut = document.createElement("canvas");
+  cut.width = width;
+  cut.height = height;
+  const cctx = cut.getContext("2d");
+  cctx.drawImage(pixelLayer, 0, 0);
+  cctx.globalCompositeOperation = "destination-in";
+  cctx.drawImage(maskCanvas, 0, 0, width, height);
+  viewCtx.drawImage(cut, 0, 0);
+}
+
 async function paintHoldCanvas(canvas, photoUrl, maskUrl, stage) {
   const photo = await loadImage(photoUrl);
   if (!photo || !canvas) return;
-  const size = fitSize(photo, 520);
+  const size = fitSize(photo, 420);
   canvas.width = size.width;
   canvas.height = size.height;
   const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, size.width, size.height);
-  ctx.drawImage(photo, 0, 0, size.width, size.height);
-  const blur = HOLD_BLUR[Math.max(0, Math.min(HOLD_BLUR.length - 1, stage))] || 0;
-  if (!blur || !maskUrl) return;
+  const block = HOLD_PIXEL[Math.max(0, Math.min(HOLD_PIXEL.length - 1, stage))] || 0;
+  if (!block || !maskUrl) {
+    ctx.drawImage(photo, 0, 0, size.width, size.height);
+    return;
+  }
   const mask = await loadImage(maskUrl);
-  if (!mask) return;
-  const layer = document.createElement("canvas");
-  layer.width = size.width;
-  layer.height = size.height;
-  const lctx = layer.getContext("2d");
-  lctx.filter = `blur(${blur}px)`;
-  lctx.drawImage(photo, 0, 0, size.width, size.height);
-  lctx.filter = "none";
-  lctx.globalCompositeOperation = "destination-in";
-  lctx.drawImage(mask, 0, 0, size.width, size.height);
-  ctx.drawImage(layer, 0, 0);
+  if (!mask) {
+    ctx.drawImage(photo, 0, 0, size.width, size.height);
+    return;
+  }
+  const maskCanvas = document.createElement("canvas");
+  maskCanvas.width = size.width;
+  maskCanvas.height = size.height;
+  maskCanvas.getContext("2d").drawImage(mask, 0, 0, size.width, size.height);
+  const pixel = makePixelLayer(photo, size.width, size.height, block);
+  composeMosaic(ctx, photo, pixel, maskCanvas, size.width, size.height);
 }
 
 function mountMosaicEditor(host, photoUrl) {
-  host.innerHTML = '<canvas class="hold-canvas" data-mosaic-view></canvas>';
+  if (!host) return;
+  host.innerHTML = '<canvas class="hold-canvas" data-mosaic-view></canvas><p class="help" data-mosaic-tip>白い線をなぞったところがモザイクになります。</p>';
   const view = host.querySelector("[data-mosaic-view]");
   Promise.all([loadImage(photoUrl), window.__mosaicMask ? loadImage(window.__mosaicMask) : null]).then(([photo, saved]) => {
-    if (!photo) return;
-    const size = fitSize(photo, 520);
+    if (!photo || !view.isConnected) return;
+    const size = fitSize(photo, 420);
     view.width = size.width;
     view.height = size.height;
     const vctx = view.getContext("2d");
-    const blurred = document.createElement("canvas");
-    blurred.width = size.width;
-    blurred.height = size.height;
-    const bctx = blurred.getContext("2d");
-    bctx.filter = `blur(${HOLD_BLUR[0]}px)`;
-    bctx.drawImage(photo, 0, 0, size.width, size.height);
-    bctx.filter = "none";
+    const pixel = makePixelLayer(photo, size.width, size.height, HOLD_PIXEL[0]);
     const mask = document.createElement("canvas");
     mask.width = size.width;
     mask.height = size.height;
@@ -159,24 +194,14 @@ function mountMosaicEditor(host, photoUrl) {
     if (saved) mctx.drawImage(saved, 0, 0, size.width, size.height);
     mctx.lineCap = "round";
     mctx.lineJoin = "round";
-    mctx.strokeStyle = "#fff";
-    mctx.lineWidth = 46;
-    const layer = document.createElement("canvas");
-    layer.width = size.width;
-    layer.height = size.height;
-    const lctx = layer.getContext("2d");
+    mctx.strokeStyle = "#ffffff";
+    mctx.lineWidth = Math.max(36, Math.round(Math.min(size.width, size.height) / 10));
     let drawing = false;
     let last = null;
     let queued = false;
     const paint = () => {
       queued = false;
-      lctx.globalCompositeOperation = "source-over";
-      lctx.clearRect(0, 0, size.width, size.height);
-      lctx.drawImage(blurred, 0, 0);
-      lctx.globalCompositeOperation = "destination-in";
-      lctx.drawImage(mask, 0, 0);
-      vctx.drawImage(photo, 0, 0, size.width, size.height);
-      vctx.drawImage(layer, 0, 0);
+      composeMosaic(vctx, photo, pixel, mask, size.width, size.height);
     };
     const schedule = () => {
       if (queued) return;
@@ -185,13 +210,16 @@ function mountMosaicEditor(host, photoUrl) {
     };
     const point = (event) => {
       const rect = view.getBoundingClientRect();
+      const x = event.clientX ?? (event.touches && event.touches[0] && event.touches[0].clientX);
+      const y = event.clientY ?? (event.touches && event.touches[0] && event.touches[0].clientY);
       return {
-        x: ((event.clientX - rect.left) / rect.width) * view.width,
-        y: ((event.clientY - rect.top) / rect.height) * view.height,
+        x: ((x - rect.left) / Math.max(1, rect.width)) * view.width,
+        y: ((y - rect.top) / Math.max(1, rect.height)) * view.height,
       };
     };
     const stroke = (event) => {
       const now = point(event);
+      if (!Number.isFinite(now.x) || !Number.isFinite(now.y)) return;
       mctx.beginPath();
       mctx.moveTo((last || now).x, (last || now).y);
       mctx.lineTo(now.x, now.y);
@@ -206,19 +234,31 @@ function mountMosaicEditor(host, photoUrl) {
       window.__mosaicMask = mask.toDataURL("image/png");
       host.dispatchEvent(new CustomEvent("mosaicchange"));
     };
-    view.addEventListener("pointerdown", (event) => {
+    const start = (event) => {
+      event.preventDefault();
       drawing = true;
       window.__mosaicDrawing = true;
       last = null;
-      view.setPointerCapture(event.pointerId);
+      try {
+        view.setPointerCapture(event.pointerId);
+      } catch {
+        /* ignore */
+      }
       stroke(event);
-    });
+    };
+    view.addEventListener("pointerdown", start);
     view.addEventListener("pointermove", (event) => {
-      if (drawing) stroke(event);
+      if (drawing) {
+        event.preventDefault();
+        stroke(event);
+      }
     });
     view.addEventListener("pointerup", finish);
     view.addEventListener("pointercancel", finish);
     paint();
+    if (saved) {
+      window.__mosaicMask = mask.toDataURL("image/png");
+    }
   });
 }
 

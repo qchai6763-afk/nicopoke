@@ -95,7 +95,15 @@ function pickQuest(local, incoming) {
     });
   }
   if (localLive && incomingLive) {
-    return stamp(incoming.postedAt) > stamp(local.postedAt) ? incoming : local;
+    const newer = stamp(incoming.postedAt) > stamp(local.postedAt) ? incoming : local;
+    const older = newer === incoming ? local : incoming;
+    return Object.assign({}, newer, {
+      mosaicMask: newer.mosaicMask || older.mosaicMask || "",
+      secretAnswer: newer.secretAnswer || older.secretAnswer || "",
+      secretReading: newer.secretReading || older.secretReading || "",
+      usageHint: newer.usageHint || older.usageHint || "",
+      nameHint: newer.nameHint || older.nameHint || "",
+    });
   }
   const themeSrc = stamp(incoming.themeAt) >= stamp(local.themeAt) ? incoming : local;
   return applyThemeFields(Object.assign({}, themeSrc), themeSrc);
