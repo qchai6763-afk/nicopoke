@@ -40,81 +40,205 @@ function avatarMark(user, extraClass = "") {
   return `<span class="${cls}">${user.icon || (user.shortName || user.name).slice(0, 1)}</span>`;
 }
 
+function readExifOrientation(buffer) {
+  const view = new DataView(buffer);
+  if (view.byteLength < 4 || view.getUint16(0, false) !== 0xffd8) return 1;
+  let offset = 2;
+  while (offset + 4 <= view.byteLength) {
+    const marker = view.getUint16(offset, false);
+    offset += 2;
+    if (marker === 0xffe1) {
+      if (offset + 8 > view.byteLength) return 1;
+      const size = view.getUint16(offset, false);
+      if (view.getUint32(offset + 2, false) !== 0x45786966) return 1;
+      const little = view.getUint16(offset + 8, false) === 0x4949;
+      const start = offset + 8;
+      if (start + 8 > view.byteLength) return 1;
+      const ifd = start + view.getUint32(start + 4, little);
+      if (ifd + 2 > view.byteLength) return 1;
+      const entries = view.getUint16(ifd, little);
+      for (let i = 0; i < entries; i += 1) {
+        const entry = ifd + 2 + i * 12;
+        if (entry + 12 > view.byteLength) break;
+        if (view.getUint16(entry, little) === 0x0112) {
+          return view.getUint16(entry + 8, little) || 1;
+        }
+      }
+      return 1;
+    }
+    if ((marker & 0xff00) !== 0xff00) break;
+    if (offset + 2 > view.byteLength) break;
+    offset += view.getUint16(offset, false);
+  }
+  return 1;
+}
+
+function orientedSize(w, h, orientation) {
+  return orientation >= 5 && orientation <= 8 ? { width: h, height: w } : { width: w, height: h };
+}
+
+function drawOrientedImage(ctx, img, dw, dh, orientation) {
+  ctx.save();
+  switch (orientation) {
+    case 2:
+      ctx.translate(dw, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(img, 0, 0, dw, dh);
+      break;
+    case 3:
+      ctx.translate(dw, dh);
+      ctx.rotate(Math.PI);
+      ctx.drawImage(img, 0, 0, dw, dh);
+      break;
+    case 4:
+      ctx.translate(0, dh);
+      ctx.scale(1, -1);
+      ctx.drawImage(img, 0, 0, dw, dh);
+      break;
+    case 5:
+      ctx.rotate(0.5 * Math.PI);
+      ctx.scale(1, -1);
+      ctx.drawImage(img, 0, 0, dh, dw);
+      break;
+    case 6:
+      ctx.rotate(0.5 * Math.PI);
+      ctx.translate(0, -dw);
+      ctx.drawImage(img, 0, 0, dh, dw);
+      break;
+    case 7:
+      ctx.rotate(0.5 * Math.PI);
+      ctx.translate(dh, -dw);
+      ctx.scale(-1, 1);
+      ctx.drawImage(img, 0, 0, dh, dw);
+      break;
+    case 8:
+      ctx.rotate(-0.5 * Math.PI);
+      ctx.translate(-dh, 0);
+      ctx.drawImage(img, 0, 0, dh, dw);
+      break;
+    default:
+      ctx.drawImage(img, 0, 0, dw, dh);
+      break;
+  }
+  ctx.restore();
+}
+
+function loadImageElement(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("decode"));
+    };
+    img.src = url;
+  });
+}
+
+async function decodePhoto(file) {
+  if (!file) throw new Error("empty");
+  let orientation = 1;
+  try {
+    const buf = await file.arrayBuffer();
+    orientation = readExifOrientation(buf);
+  } catch {
+    orientation = 1;
+  }
+  if (typeof createImageBitmap === "function") {
+    try {
+      const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+      return { img: bitmap, orientation: 1, close: () => bitmap.close && bitmap.close() };
+    } catch {
+      try {
+        const bitmap = await createImageBitmap(file);
+        return { img: bitmap, orientation, close: () => bitmap.close && bitmap.close() };
+      } catch {
+        /* fall through */
+      }
+    }
+  }
+  const img = await loadImageElement(file);
+  return { img, orientation, close: () => {} };
+}
+
 function compressPhoto(file, done) {
   const max = 720;
   const quality = 0.7;
-  const finish = (img) => {
-    let w = img.width;
-    let h = img.height;
-    if (!w || !h) {
-      window.alert("この画像は使えません。別の写真を選んでください。");
-      return;
-    }
-    if (Math.max(w, h) > max) {
-      const s = max / Math.max(w, h);
-      w = Math.round(w * s);
-      h = Math.round(h * s);
-    }
-    const canvas = document.createElement("canvas");
-    canvas.width = w;
-    canvas.height = h;
-    canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-    done(canvas.toDataURL("image/jpeg", quality));
-  };
-  if (typeof createImageBitmap === "function") {
-    createImageBitmap(file)
-      .then(finish)
-      .catch(() => readPhotoFile(file, finish));
-    return;
-  }
-  readPhotoFile(file, finish);
-}
-
-function readPhotoFile(file, finish) {
-  const reader = new FileReader();
-  reader.onerror = () => window.alert("写真を読み込めませんでした。");
-  reader.onload = () => {
-    const img = new Image();
-    img.onload = () => finish(img);
-    img.onerror = () => window.alert("この画像は使えません。JPEGやPNGを選んでください。");
-    img.src = reader.result;
-  };
-  reader.readAsDataURL(file);
+  decodePhoto(file)
+    .then(({ img, orientation, close }) => {
+      const natural = orientedSize(img.width, img.height, orientation);
+      let w = natural.width;
+      let h = natural.height;
+      if (!w || !h) {
+        close();
+        window.alert("この画像は使えません。別の写真を選んでください。");
+        return;
+      }
+      if (Math.max(w, h) > max) {
+        const s = max / Math.max(w, h);
+        w = Math.round(w * s);
+        h = Math.round(h * s);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      drawOrientedImage(ctx, img, w, h, orientation);
+      close();
+      done(canvas.toDataURL("image/jpeg", quality));
+    })
+    .catch(() => {
+      window.alert("写真を読み込めませんでした。フォルダーから選ぶか、もう一度カメラで撮ってください。");
+    });
 }
 
 function cropToSquare(file, done) {
-  const finish = (img) => {
-    if (!img.width || !img.height) {
-      window.alert("この画像は使えません。別の写真を選んでください。");
-      return;
-    }
-    const size = 280;
-    const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext("2d");
-    const min = Math.min(img.width, img.height);
-    const sx = (img.width - min) / 2;
-    const sy = (img.height - min) / 2;
-    ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size);
-    done(canvas.toDataURL("image/jpeg", 0.82));
-  };
-  if (typeof createImageBitmap === "function") {
-    createImageBitmap(file)
-      .then(finish)
-      .catch(() => readPhotoFile(file, finish));
-    return;
-  }
-  readPhotoFile(file, finish);
+  decodePhoto(file)
+    .then(({ img, orientation, close }) => {
+      const natural = orientedSize(img.width, img.height, orientation);
+      if (!natural.width || !natural.height) {
+        close();
+        window.alert("この画像は使えません。別の写真を選んでください。");
+        return;
+      }
+      const size = 280;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const tmp = document.createElement("canvas");
+      tmp.width = natural.width;
+      tmp.height = natural.height;
+      const tctx = tmp.getContext("2d");
+      drawOrientedImage(tctx, img, natural.width, natural.height, orientation);
+      close();
+      const min = Math.min(natural.width, natural.height);
+      const sx = (natural.width - min) / 2;
+      const sy = (natural.height - min) / 2;
+      canvas.getContext("2d").drawImage(tmp, sx, sy, min, min, 0, 0, size, size);
+      done(canvas.toDataURL("image/jpeg", 0.82));
+    })
+    .catch(() => {
+      window.alert("写真を読み込めませんでした。フォルダーから選ぶか、もう一度カメラで撮ってください。");
+    });
 }
 
 function bindFileInputs(root, onFile) {
   root.querySelectorAll('input[type="file"]').forEach((input) => {
     input.addEventListener("change", () => {
-      const file = input.files?.[0];
-      input.value = "";
+      const file = input.files && input.files[0];
       if (!file) return;
       onFile(file);
+      window.setTimeout(() => {
+        try {
+          input.value = "";
+        } catch {
+          /* ignore */
+        }
+      }, 0);
     });
   });
 }
@@ -125,7 +249,7 @@ function photoPickHtml(kind) {
     <div class="photo-picks">
       <label class="pick-photo">
         フォルダーから選ぶ
-        <input type="file" accept="image/*,.jpg,.jpeg,.png,.webp,.heic,.heif" />
+        <input type="file" accept="image/*" />
       </label>
       <label class="pick-photo alt">
         カメラで撮る
@@ -282,7 +406,7 @@ function renderLogin() {
     <div class="gate">
       <div class="badge">にこぽけ</div>
       <h1>今日の一枚を、<br />みんなで。</h1>
-      <p>曜日ごとのお題で、いまの生活の一枚を送ります。家族は写真を見て、おしゃべりします。</p>
+      <p>曜日ごとのお題で、いまの生活の一枚を送ります。病院・老人ホーム・認知症予防の教室などで一緒に始めた家族が、写真を見ておしゃべりします。</p>
       ${err ? `<p class="gate-err">${escapeHtml(err)}</p>` : ""}
       ${warn ? `<p class="gate-warn">${escapeHtml(warn)}</p>` : ""}
       ${
@@ -1084,7 +1208,7 @@ function tutorialSlides() {
       img: "img/learn-aging.png",
       alt: "にこぽけのやさしい脳のイラスト",
       title: "にこぽけへようこそ",
-      text: "家族の写真と、かんたんな脳トレで、毎日をすこし明るくするアプリです。",
+      text: "病院・老人ホーム・認知症予防の教室をきっかけに、家族で写真と脳トレを続けるアプリです。",
     },
     {
       img: "img/brain-intro-memory.png",
