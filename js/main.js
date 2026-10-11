@@ -25,12 +25,6 @@ function escapeHtml(str = "") {
     .replaceAll('"', "&quot;");
 }
 
-const VISIBLE_COMMENTS = 5;
-
-function commentsOpen(questId) {
-  return Boolean((window.__openComments || {})[questId]);
-}
-
 function avatarMark(user, extraClass = "") {
   if (!user) return "";
   const cls = `avatar ${extraClass}`.trim();
@@ -278,10 +272,6 @@ function savePhotoDraft() {
       key,
       JSON.stringify({
         photo,
-        mask: window.__mosaicMask || "",
-        secret: window.__secretDraft || "",
-        reading: window.__readingDraft || "",
-        hint: window.__usageHint || "",
         at: Date.now(),
       })
     );
@@ -298,10 +288,6 @@ function loadPhotoDraft() {
     const data = JSON.parse(raw);
     if (!data || !data.photo) return;
     window.__photoPreview = data.photo;
-    window.__mosaicMask = data.mask || "";
-    window.__secretDraft = data.secret || "";
-    window.__readingDraft = data.reading || "";
-    window.__usageHint = data.hint || "";
   } catch {
     /* ignore */
   }
@@ -337,7 +323,7 @@ function statusRow(group, viewerId) {
     waiting.some((r) => r.user.id === viewerId) && othersPosted.length
       ? `<div class="notice">${escapeHtml(othersPosted[0].user.name)}さんが先に写真を送りました<small>あなたの番です。</small></div>`
       : othersPosted.length && !waiting.some((r) => r.user.id === viewerId)
-        ? `<div class="notice">みんなの写真が届いています<small>見て、おしゃべりしてみましょう。</small></div>`
+        ? `<div class="notice">みんなの写真が届いています<small>次に会ったときの話のネタにどうぞ。</small></div>`
         : "";
 
   return `
@@ -438,7 +424,7 @@ function personFields(prefix, defaults = {}) {
 function privacyListHtml() {
   return `
     <ul class="privacy-list">
-      <li>写真・一言コメント・名前・いいね・返事ボタン・お題との関係投票・コメントは、グループの共有サーバーに保存されます。参加コードを知っている人は、これらを見られます。</li>
+      <li>写真・一言・名前・いいね・ひとことメモは、グループの共有サーバーに保存されます。参加コードを知っている人は、これらを見られます。</li>
       <li>脳トレの記録と元気予報の結果は、このスマホの中だけに残ります。家族には送られません。</li>
       <li>写真に自分以外の人が写るときは、送る前にその人に聞いてください。</li>
       <li>送った写真は、日がたってもアルバムに残り、「思い出神経衰弱」のカードとしてグループのみんなに表示されます。</li>
@@ -468,7 +454,7 @@ function renderLogin() {
     <div class="gate">
       <div class="badge">にこぽけ</div>
       <h1>今日の一枚を、<br />みんなで。</h1>
-      <p>曜日ごとのお題で、いまの生活の一枚を送ります。病院・老人ホーム・認知症予防の教室などで一緒に始めた家族が、写真を見ておしゃべりします。</p>
+      <p>病院・老人ホーム・認知症予防の教室などで、家族といっしょに使い方を覚えます。家では人ごとのお題で一枚送り、写真を見てお題を当てます。お題を見て何を撮るか考えること自体が、頭の体操になります。</p>
       ${err ? `<p class="gate-err">${escapeHtml(err)}</p>` : ""}
       ${warn ? `<p class="gate-warn">${escapeHtml(warn)}</p>` : ""}
       ${
@@ -607,40 +593,16 @@ function renderToday() {
        <a class="primary" href="#/feed">みんなの写真を見る</a>
        <a class="ghost" href="#/brain">脳トレで息抜き</a>`
     : preview
-      ? `<div class="hold-editor">
-         <div class="hold-steps">
-           <p class="kicker">送りかた</p>
-           <ol class="hold-step-list">
-             <li>写真の上を指でなぞって、モザイクをかける</li>
-             <li>持っているものの名前を書く</li>
-             <li>最初のヒントを1つ選ぶ</li>
-             <li>「この写真で送る」を押す</li>
-           </ol>
-         </div>
-         <div data-mosaic-host></div>
-         <p class="help">白い線のところがモザイクになります。隠したいところをなぞってください。</p>
-         <label class="caption-label">持っているもの
-           <input class="pill" data-secret maxlength="20" placeholder="例）ほうじ茶" value="${escapeHtml(window.__secretDraft || "")}" />
-         </label>
-         <label class="caption-label" data-reading-row ${hasKanji(window.__secretDraft) ? "" : "hidden"}>よみがな（ひらがなで）
-           <input class="pill" data-reading maxlength="30" placeholder="例）ほうじちゃ" value="${escapeHtml(window.__readingDraft || "")}" />
-         </label>
-         <p class="kicker">家族に出す、最初のヒント</p>
-         <div class="chips">
-           ${HOLD_HINTS.map(
-             (hint) =>
-               `<button type="button" class="chip ${window.__usageHint === hint ? "on" : ""}" data-usage-hint="${escapeHtml(hint)}">${escapeHtml(hint)}</button>`
-           ).join("")}
-         </div>
+      ? `<div class="preview-box">
+         <div class="stage"><img src="${preview}" alt="" /></div>
          <div class="preview-actions">
            <button class="primary" type="button" data-confirm>この写真で送る</button>
            <button class="ghost" type="button" data-clear-preview>選びなおす</button>
          </div>
-         <p class="help" data-hold-msg></p>
          <p class="help">途中でアプリを閉じても、この写真はスマホの中に残ります。</p>
        </div>`
       : `${photoPickHtml("quest")}
-         <p class="help">カメラで撮るか、フォルダーから選べます。撮ったあとは、指でモザイクをかけます。</p>`;
+         <p class="help">カメラで撮るか、フォルダーから選べます。お題に合うものを1つ撮って送ってください。</p>`;
 
   const editingPhoto = Boolean(preview) && !posted;
   app.innerHTML = chrome(
@@ -658,7 +620,7 @@ function renderToday() {
       ${
         posted || editingPhoto
           ? ""
-          : `<p class="help">${escapeHtml(holdHelp(quest.date))}</p>`
+          : `<p class="help">あなただけの今日のお題です。家族には写真を送ったあと、当ててもらいます。</p>`
       }
       ${editor}
       ${stage}
@@ -677,55 +639,14 @@ function renderToday() {
   bindFileInputs(app, (file) => {
     compressPhoto(file, (url) => {
       window.__photoPreview = url;
-      window.__mosaicMask = "";
       savePhotoDraft();
       render();
     });
   });
-  const host = app.querySelector("[data-mosaic-host]");
-  if (host && window.__photoPreview) mountMosaicEditor(host, window.__photoPreview);
-  const readingRow = app.querySelector("[data-reading-row]");
-  app.querySelector("[data-secret]")?.addEventListener("input", (e) => {
-    window.__secretDraft = e.target.value;
-    if (readingRow) readingRow.hidden = !hasKanji(e.target.value);
-    savePhotoDraft();
-  });
-  app.querySelector("[data-reading]")?.addEventListener("input", (e) => {
-    window.__readingDraft = e.target.value;
-    savePhotoDraft();
-  });
-  app.querySelectorAll("[data-usage-hint]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      window.__usageHint = btn.dataset.usageHint;
-      app.querySelectorAll("[data-usage-hint]").forEach((el) => {
-        el.classList.toggle("on", el.dataset.usageHint === window.__usageHint);
-      });
-      savePhotoDraft();
-    });
-  });
-  const holdMsg = app.querySelector("[data-hold-msg]");
-  host?.addEventListener("mosaicchange", () => {
-    savePhotoDraft();
-    if (holdMsg) holdMsg.textContent = "";
-  });
   app.querySelector("[data-confirm]")?.addEventListener("click", () => {
-    const secret = String(window.__secretDraft || "").trim();
-    const reading = hasKanji(secret) ? String(window.__readingDraft || "").trim() : "";
-    const missing = [];
-    if (!window.__mosaicMask) missing.push("写真を指でなぞってモザイクをかける");
-    if (!secret) missing.push("持っているものの名前を書く");
-    if (hasKanji(secret) && (!reading || hasKanji(reading))) missing.push("よみがなをひらがなで書く");
-    if (!window.__usageHint) missing.push("最初のヒントを選ぶ");
-    if (!window.__photoPreview || missing.length) {
-      if (holdMsg) holdMsg.textContent = `あと少し：${missing.join("、")}`;
-      return;
-    }
+    if (!window.__photoPreview) return;
     postPhoto(quest.id, {
       photoDataUrl: window.__photoPreview,
-      mosaicMask: window.__mosaicMask,
-      secretAnswer: secret,
-      secretReading: reading,
-      usageHint: window.__usageHint,
       caption: "",
     });
     clearPhotoDraft();
@@ -738,26 +659,66 @@ function renderToday() {
   app.querySelector("[data-enable-push]")?.addEventListener("click", () => enablePush());
 }
 
+function groupChatHtml(groupId, viewerId) {
+  const msgs = messagesForGroup(groupId).slice(-50);
+  const thread = msgs.length
+    ? msgs
+        .map((m) => {
+          const who = userById(m.userId);
+          const mine = m.userId === viewerId;
+          return `<div class="chat-bubble ${mine ? "me" : ""}">
+            <div class="chat-meta">${avatarMark(who, "tiny")}<b>${escapeHtml(
+              who?.shortName || who?.name || ""
+            )}</b><small>${ago(m.at)}</small></div>
+            <p>${escapeHtml(m.text)}</p>
+          </div>`;
+        })
+        .join("")
+    : `<p class="help">まだメモがありません。写真を見た感想や、次に話したいことを残せます。</p>`;
+  return `
+    <section class="group-chat">
+      <p class="kicker">ひとことメモ</p>
+      <p class="help">会ったときの話のメモにも使えます。会話の本番は、集まったときです。</p>
+      <div class="chat-thread" data-chat-thread>${thread}</div>
+      <form class="composer chat-composer" data-group-chat>
+        <div class="actions">
+          <input class="pill" name="text" maxlength="120" autocomplete="off" placeholder="次に会うまでのメモ" />
+          <button class="pill-btn" type="submit">送る</button>
+        </div>
+      </form>
+    </section>`;
+}
+
+function bindGroupChat(root) {
+  const form = root.querySelector("[data-group-chat]");
+  if (!form) return;
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const input = form.querySelector('input[name="text"]');
+    const text = input ? input.value : "";
+    if (!String(text || "").trim()) return;
+    if (input) input.blur();
+    if (!sendGroupMessage(text)) return;
+    if (input) input.value = "";
+    window.__pendingSyncRender = false;
+    render();
+  });
+  const thread = root.querySelector("[data-chat-thread]");
+  if (thread) thread.scrollTop = thread.scrollHeight;
+}
+
 function postCard(quest, viewerId) {
   const who = userById(quest.userId);
   const mine = quest.userId === viewerId;
   const posted = isPosted(quest);
-  const comments = commentsFor(quest.id)
-    .slice()
-    .sort((a, b) => (a.at || 0) - (b.at || 0));
   const likes = likeCount(quest.id);
   const liked = hasLiked(quest.id, viewerId);
-  const expanded = commentsOpen(quest.id);
-  const hidden = expanded ? 0 : Math.max(0, comments.length - VISIBLE_COMMENTS);
-  const shown = comments.slice(hidden);
+  const themeOpen = canSeeTheme(quest, viewerId);
+  const progress = !mine && posted ? themeProgress(quest, viewerId) : null;
 
-  const hold = quest.secretAnswer ? holdProgress(quest, viewerId) : null;
-  const showClear = mine || !quest.secretAnswer || (hold && hold.over);
   const media = posted
-    ? showClear
-      ? `<img src="${quest.photoDataUrl}" alt="" />
-       ${mine || !quest.secretAnswer ? '<div class="tag">お題：' + escapeHtml(quest.theme) + "</div>" : ""}`
-      : `<p class="kicker">${escapeHtml(quest.theme)}</p><canvas class="hold-canvas" data-hold-view="${quest.id}" data-hold-stage="${hold.stage}"></canvas>`
+    ? `<img src="${quest.photoDataUrl}" alt="" />
+       ${themeOpen ? '<div class="tag">お題：' + escapeHtml(quest.theme) + "</div>" : ""}`
     : `<div class="locked"><div><span>🔒</span><em>waiting</em></div></div>`;
 
   const waitCopy = !posted
@@ -767,139 +728,29 @@ function postCard(quest, viewerId) {
   const captionLine =
     posted && quest.caption ? `<p class="caption-line">一言「${escapeHtml(quest.caption)}」</p>` : "";
 
-  const prompt = talkPromptFor(quest);
-  const minePick = myTalkReact(quest.id, viewerId);
-  const talkLines = latestTalkReacts(quest.id)
-    .map((r) => {
-      const who = userById(r.userId);
-      if (!who) return "";
-      const said = talkButtonLabel(prompt, r.choice);
-      const replySet = talkReplyFor(r.choice, quest);
-      const answered = r.reply ? talkButtonLabel(replySet, r.reply) : "";
-      const followSet = talkFollowFor(r.reply);
-      const followed = r.follow ? talkButtonLabel(followSet, r.follow) : "";
-      const ownerName = escapeHtml(userById(quest.userId)?.shortName || "");
-      const back = answered
-        ? '<p class="talk-line back"><b>' +
-          ownerName +
-          "</b>「" +
-          escapeHtml(answered) +
-          "」" +
-          (r.reply === "more" ? "　今日の画面でもう一枚送れます。" : "") +
-          "</p>"
-        : mine
-          ? `<p class="kicker">${escapeHtml(replySet.q)}</p>
-             <div class="talk-btns">
-               ${replySet.buttons
-                 .map(
-                   (b) =>
-                     `<button type="button" class="talk-btn" data-talk-reply="${quest.id}" data-talk-to="${escapeHtml(
-                       r.userId
-                     )}" data-talk-reply-choice="${escapeHtml(b.id)}">${escapeHtml(b.label)}</button>`
-                 )
-                 .join("")}
-             </div>`
-          : `<p class="help">返事を待っています。</p>`;
-      const tail =
-        answered && followed
-          ? '<p class="talk-line"><b>' + escapeHtml(who.shortName) + "</b>「" + escapeHtml(followed) + "」</p>"
-          : answered && viewerId === r.userId
-            ? '<p class="kicker">' +
-              escapeHtml(followSet.q) +
-              '</p><div class="talk-btns">' +
-              followSet.buttons
-                .map(
-                  (b) =>
-                    '<button type="button" class="talk-btn" data-talk-follow="' +
-                    quest.id +
-                    '" data-talk-follow-choice="' +
-                    escapeHtml(b.id) +
-                    '">' +
-                    escapeHtml(b.label) +
-                    "</button>"
-                )
-                .join("") +
-              "</div>"
-            : "";
-      return `<div class="talk-turn"><p class="talk-line"><b>${escapeHtml(who.shortName)}</b>「${escapeHtml(said)}」</p>${back}${tail}</div>`;
-    })
-    .join("");
-  const talkAsk = posted
-    ? `<div class="talk-ask">
-         <p class="kicker">${escapeHtml(prompt.q)}</p>
-         ${
-           mine
-             ? ""
-             : `<div class="talk-btns">
-           ${prompt.buttons
-             .map(
-               (b) =>
-                 `<button type="button" class="talk-btn ${
-                   minePick && minePick.choice === b.id ? "on" : ""
-                 }" data-talk-react="${quest.id}" data-talk-choice="${escapeHtml(b.id)}">${escapeHtml(b.label)}</button>`
-             )
-             .join("")}
-         </div>`
-         }
-         ${talkLines || `<p class="help">${mine ? "家族がボタンで声をかけると、ここに返事が出ます。" : "大きいボタンを押すと、相手がボタンで返します。"}</p>`}
-       </div>`
-    : "";
-
-  const talkUi = posted
-    ? `<div class="talk">
-         <p class="kicker">おしゃべり</p>
-         ${
-           hidden || (expanded && comments.length > VISIBLE_COMMENTS)
-             ? `<button class="thread-toggle" type="button" data-toggle-comments="${quest.id}">
-                  ${expanded ? "前のコメントをしまう" : `前のコメントも見る（${hidden}）`}
-                </button>`
-             : ""
-         }
-         ${
-           shown.length
-             ? `<div class="thread open">
-                  ${shown
-                    .map((c) => {
-                      const cu = userById(c.userId);
-                      return `<div class="bubble ${c.userId === viewerId ? "me" : ""}">${avatarMark(
-                        cu,
-                        "tiny"
-                      )}<div><b>${escapeHtml(cu?.shortName || "")}</b>${escapeHtml(c.text)}</div></div>`;
-                    })
-                    .join("")}
-                </div>`
-             : `<p class="help">写真を見て、ひとこと書いてください。</p>`
-         }
-         <form class="composer" data-comment="${quest.id}">
-           <div class="actions">
-             <input class="pill" name="text" placeholder="おしゃべりを書く" />
-             <button class="pill-btn" type="submit">送る</button>
-           </div>
-         </form>
-       </div>`
-    : "";
-
-  const holdUi =
-    quest.secretAnswer && !mine && posted
-      ? hold.over
-        ? `<div class="choice-box"><p class="guess-note">${hold.solved ? "当たり！" : "答えをみました"}</p><p class="fit-answer">答え：${escapeHtml(quest.secretAnswer)}</p></div>`
+  const guessUi =
+    !mine && posted
+      ? progress.over
+        ? `<div class="choice-box"><p class="guess-note">${
+            progress.solved ? "当たり！" : "お題をみました"
+          }</p><p class="fit-answer">お題：${escapeHtml(quest.theme)}</p></div>`
         : `<div class="choice-box">
-            <p class="kicker">なにを持ってる？</p>
-            <p class="help">ヒント：${escapeHtml(quest.usageHint || "")}</p>
+            <p class="kicker">このお題はなーんだ？</p>
+            <p class="help">写真を見て、お題を当ててください。外してもすぐ終わりません。</p>
             ${
-              hold.wrong >= 1
-                ? `<p class="help">名前のヒント：${escapeHtml(quest.nameHint || "")}</p><p class="guess-note">おしい！もう一度どうぞ。</p>`
-                : `<p class="help">まずはヒントだけ見て、当ててみてください。</p>`
+              progress.wrong >= 1
+                ? `<p class="guess-note">おしい！もう一度どうぞ。</p>`
+                : ""
             }
-            <form class="composer" data-hold-guess="${quest.id}">
+            <form class="composer" data-theme-guess="${quest.id}">
               <div class="actions">
-                <input class="pill" name="guess" maxlength="30" placeholder="なにを持ってる？" />
+                <input class="pill" name="guess" maxlength="40" placeholder="お題を書く" autocomplete="off" />
                 <button class="pill-btn" type="submit">答える</button>
               </div>
             </form>
             ${
-              hold.wrong >= 2
-                ? `<button type="button" class="ghost" data-hold-reveal="${quest.id}">答えをみる</button>`
+              progress.wrong >= 2
+                ? `<button type="button" class="ghost" data-theme-reveal="${quest.id}">お題をみる</button>`
                 : ""
             }
           </div>`
@@ -916,9 +767,8 @@ function postCard(quest, viewerId) {
       <div class="frame">${media}</div>
       ${waitCopy}
       ${captionLine}
-      ${mine && quest.secretAnswer ? `<p class="theme-mine">あなたが書いた答え　${escapeHtml(quest.secretAnswer)}</p>` : ""}
-      ${holdUi}
-      ${talkAsk}
+      ${mine && posted ? `<p class="theme-mine">あなたの今日のお題　${escapeHtml(quest.theme)}</p>` : ""}
+      ${guessUi}
       ${
         posted
           ? `<div class="react">
@@ -935,7 +785,6 @@ function postCard(quest, viewerId) {
              }`
           : ""
       }
-      ${talkUi}
     </article>
   `;
 }
@@ -955,46 +804,31 @@ function bindDeletePost(root) {
 }
 
 function bindFeedActions() {
-  app.querySelectorAll("[data-comment]").forEach((form) => {
-    form.addEventListener("submit", (e) => {
-      e.preventDefault();
-      addComment(form.dataset.comment, new FormData(form).get("text"));
-    });
-  });
   app.querySelectorAll("[data-like]").forEach((btn) => {
     btn.addEventListener("click", () => toggleLike(btn.dataset.like));
   });
-  app.querySelectorAll("[data-talk-react]").forEach((btn) => {
-    btn.addEventListener("click", () => setTalkReact(btn.dataset.talkReact, btn.dataset.talkChoice));
-  });
-  app.querySelectorAll("[data-talk-reply]").forEach((btn) => {
-    btn.addEventListener("click", () => setTalkReply(btn.dataset.talkReply, btn.dataset.talkTo, btn.dataset.talkReplyChoice));
-  });
-  app.querySelectorAll("[data-talk-follow]").forEach((btn) => {
-    btn.addEventListener("click", () => setTalkFollow(btn.dataset.talkFollow, btn.dataset.talkFollowChoice));
-  });
-  app.querySelectorAll("[data-hold-guess]").forEach((form) => {
+  app.querySelectorAll("[data-theme-guess]").forEach((form) => {
     form.addEventListener("submit", (e) => {
       e.preventDefault();
-      const guess = submitHoldGuess(form.dataset.holdGuess, new FormData(form).get("guess"));
+      const input = form.querySelector('input[name="guess"]');
+      if (input) input.blur();
+      const guess = submitGuess(form.dataset.themeGuess, new FormData(form).get("guess"));
       if (!guess) return;
       if (guess.correct) playFanfare();
       else playResultTone(false);
-    });
-  });
-  app.querySelectorAll("[data-hold-reveal]").forEach((btn) => {
-    btn.addEventListener("click", () => revealHoldAnswer(btn.dataset.holdReveal));
-  });
-  paintHoldCards();
-  bindDeletePost(app);
-  app.querySelectorAll("[data-toggle-comments]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      window.__openComments = window.__openComments || {};
-      const id = btn.dataset.toggleComments;
-      window.__openComments[id] = !window.__openComments[id];
+      window.__pendingSyncRender = false;
       render();
     });
   });
+  app.querySelectorAll("[data-theme-reveal]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      revealThemeAnswer(btn.dataset.themeReveal);
+      window.__pendingSyncRender = false;
+      render();
+    });
+  });
+  bindDeletePost(app);
+  bindGroupChat(app);
 }
 
 function renderFeed() {
@@ -1010,6 +844,7 @@ function renderFeed() {
     app.innerHTML = chrome(
       `
       ${statusRow(group, user.id)}
+      ${groupChatHtml(group.id, user.id)}
       ${
         streakAtRisk(user.id)
           ? `<div class="notice risk-note">🔥 連続記録が今日で途切れそうです<small>写真を送ると、家族のいいね競争にも参加できます。</small></div>`
@@ -1024,6 +859,7 @@ function renderFeed() {
       "feed"
     );
     bindTop();
+    bindGroupChat(app);
     return;
   }
 
@@ -1044,10 +880,11 @@ function renderFeed() {
     .sort((a, b) => (b.postedAt || 0) - (a.postedAt || 0));
   const board = viewDate === today ? todayBoard(group.id) : [];
   const top = board[0];
-  const fun = board.flatMap((b) => b.comments.map((c) => ({ ...c, owner: b.user }))).sort((a, b) => b.at - a.at)[0];
+  const latestChat = messagesForGroup(group.id).slice(-1)[0];
 
   app.innerHTML = chrome(
     `
+      ${groupChatHtml(group.id, user.id)}
       <div class="time-nav">
         <button type="button" class="time-btn" data-feed-older ${isOldest ? "disabled" : ""}>← 過去へ</button>
         <div class="time-now">
@@ -1063,11 +900,11 @@ function renderFeed() {
                <p class="kicker">今日のいいね王</p>
                <div class="board-row">${avatarMark(top.user, "md")} <div><b>${escapeHtml(
                  top.user.name
-               )}</b><span>❤️ ${top.likes}　💬 ${top.comments.length}</span></div></div>
+               )}</b><span>❤️ ${top.likes}</span></div></div>
                ${
-                 fun && userById(fun.userId)
-                   ? `<p class="fun">今日のひとこと 「${escapeHtml(fun.text)}」 — ${escapeHtml(
-                       userById(fun.userId).shortName
+                 latestChat && userById(latestChat.userId)
+                   ? `<p class="fun">メモより 「${escapeHtml(latestChat.text)}」 — ${escapeHtml(
+                       userById(latestChat.userId).shortName
                      )}</p>`
                    : ""
                }
@@ -1295,25 +1132,25 @@ function tutorialSlides() {
       img: "img/learn-aging.png",
       alt: "にこぽけのやさしい脳のイラスト",
       title: "にこぽけへようこそ",
-      text: "病院・老人ホーム・認知症予防の教室をきっかけに、家族で今日の一枚を送り合うアプリです。",
+      text: "病院・老人ホーム・認知症予防の教室などで、家族といっしょに始めます。家でお題の一枚を送り、写真を見てお題を当てます。",
     },
     {
       img: "img/brain-intro-memory.png",
       alt: "家族の写真カードのイラスト",
-      title: "1. お題のものを撮る",
-      text: "「今日」を開くと、曜日ごとのお題が出ます。物を1つだけ、近くで撮るか、フォルダーから選びます。",
+      title: "1. 自分のお題を撮る",
+      text: "「今日」を開くと、あなただけのお題が出ます。お題に合うものを1つ、近くで撮るかフォルダーから選びます。",
     },
     {
       img: "img/brain-intro-order.png",
-      alt: "指でなぞるイラスト",
-      title: "2. 指でモザイクをかける",
-      text: "写真の上を指でなぞると、そこだけモザイク（マス目）になります。隠したいところをなぞってから送ります。",
+      alt: "写真を送るイラスト",
+      title: "2. 写真をそのまま送る",
+      text: "モザイクやヒントは不要です。写真を選んだら、そのまま家族へ送ります。お題は相手には見えません。",
     },
     {
       img: "img/learn-train.png",
       alt: "家族が話しているイラスト",
-      title: "3. 家族が当てて話す",
-      text: "家族はヒントを見て答えます。外しても答えはすぐ出ません。当てたあと、おしゃべりがはじまります。",
+      title: "3. お題を当てて話す",
+      text: "家族は写真を見て、お題をアプリに書きます。外してもすぐ終わりません。当たったあと、会ったときの話にも使えます。",
     },
   ];
 }
