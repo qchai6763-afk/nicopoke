@@ -1589,34 +1589,6 @@ function todayBoard(groupId) {
     .sort((a, b) => b.likes - a.likes || (b.quest.postedAt || 0) - (a.quest.postedAt || 0));
 }
 
-function messagesForGroup(groupId) {
-  return (state.messages || [])
-    .filter((m) => m && m.groupId === groupId && m.text)
-    .slice()
-    .sort((a, b) => (a.at || 0) - (b.at || 0));
-}
-
-function sendGroupMessage(text) {
-  const user = currentUser();
-  const group = currentGroup();
-  const body = String(text || "").trim().slice(0, 120);
-  if (!user || !group || !body) return null;
-  if (!state.messages) state.messages = [];
-  const row = {
-    id: makeId("msg"),
-    groupId: group.id,
-    userId: user.id,
-    text: body,
-    at: Date.now(),
-  };
-  state.messages.push(row);
-  if (state.messages.length > 300) {
-    state.messages = state.messages.slice(-300);
-  }
-  notify();
-  return row;
-}
-
 function likesReceived(userId) {
   return state.quests
     .filter((q) => q.userId === userId && isPosted(q))
