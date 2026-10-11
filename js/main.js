@@ -424,7 +424,7 @@ function personFields(prefix, defaults = {}) {
 function privacyListHtml() {
   return `
     <ul class="privacy-list">
-      <li>写真・一言・名前・いいね・ひとことメモは、グループの共有サーバーに保存されます。参加コードを知っている人は、これらを見られます。</li>
+      <li>写真・一言・名前・いいねは、グループの共有サーバーに保存されます。参加コードを知っている人は、これらを見られます。</li>
       <li>脳トレの記録と元気予報の結果は、このスマホの中だけに残ります。家族には送られません。</li>
       <li>写真に自分以外の人が写るときは、送る前にその人に聞いてください。</li>
       <li>送った写真は、日がたってもアルバムに残り、「思い出神経衰弱」のカードとしてグループのみんなに表示されます。</li>
@@ -659,54 +659,6 @@ function renderToday() {
   app.querySelector("[data-enable-push]")?.addEventListener("click", () => enablePush());
 }
 
-function groupChatHtml(groupId, viewerId) {
-  const msgs = messagesForGroup(groupId).slice(-50);
-  const thread = msgs.length
-    ? msgs
-        .map((m) => {
-          const who = userById(m.userId);
-          const mine = m.userId === viewerId;
-          return `<div class="chat-bubble ${mine ? "me" : ""}">
-            <div class="chat-meta">${avatarMark(who, "tiny")}<b>${escapeHtml(
-              who?.shortName || who?.name || ""
-            )}</b><small>${ago(m.at)}</small></div>
-            <p>${escapeHtml(m.text)}</p>
-          </div>`;
-        })
-        .join("")
-    : `<p class="help">まだメモがありません。写真を見た感想や、次に話したいことを残せます。</p>`;
-  return `
-    <section class="group-chat">
-      <p class="kicker">ひとことメモ</p>
-      <p class="help">会ったときの話のメモにも使えます。会話の本番は、集まったときです。</p>
-      <div class="chat-thread" data-chat-thread>${thread}</div>
-      <form class="composer chat-composer" data-group-chat>
-        <div class="actions">
-          <input class="pill" name="text" maxlength="120" autocomplete="off" placeholder="次に会うまでのメモ" />
-          <button class="pill-btn" type="submit">送る</button>
-        </div>
-      </form>
-    </section>`;
-}
-
-function bindGroupChat(root) {
-  const form = root.querySelector("[data-group-chat]");
-  if (!form) return;
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
-    const input = form.querySelector('input[name="text"]');
-    const text = input ? input.value : "";
-    if (!String(text || "").trim()) return;
-    if (input) input.blur();
-    if (!sendGroupMessage(text)) return;
-    if (input) input.value = "";
-    window.__pendingSyncRender = false;
-    render();
-  });
-  const thread = root.querySelector("[data-chat-thread]");
-  if (thread) thread.scrollTop = thread.scrollHeight;
-}
-
 function postCard(quest, viewerId) {
   const who = userById(quest.userId);
   const mine = quest.userId === viewerId;
@@ -828,7 +780,6 @@ function bindFeedActions() {
     });
   });
   bindDeletePost(app);
-  bindGroupChat(app);
 }
 
 function renderFeed() {
@@ -844,7 +795,6 @@ function renderFeed() {
     app.innerHTML = chrome(
       `
       ${statusRow(group, user.id)}
-      ${groupChatHtml(group.id, user.id)}
       ${
         streakAtRisk(user.id)
           ? `<div class="notice risk-note">🔥 連続記録が今日で途切れそうです<small>写真を送ると、家族のいいね競争にも参加できます。</small></div>`
@@ -859,7 +809,6 @@ function renderFeed() {
       "feed"
     );
     bindTop();
-    bindGroupChat(app);
     return;
   }
 
@@ -880,11 +829,9 @@ function renderFeed() {
     .sort((a, b) => (b.postedAt || 0) - (a.postedAt || 0));
   const board = viewDate === today ? todayBoard(group.id) : [];
   const top = board[0];
-  const latestChat = messagesForGroup(group.id).slice(-1)[0];
 
   app.innerHTML = chrome(
     `
-      ${groupChatHtml(group.id, user.id)}
       <div class="time-nav">
         <button type="button" class="time-btn" data-feed-older ${isOldest ? "disabled" : ""}>← 過去へ</button>
         <div class="time-now">
@@ -901,13 +848,6 @@ function renderFeed() {
                <div class="board-row">${avatarMark(top.user, "md")} <div><b>${escapeHtml(
                  top.user.name
                )}</b><span>❤️ ${top.likes}</span></div></div>
-               ${
-                 latestChat && userById(latestChat.userId)
-                   ? `<p class="fun">メモより 「${escapeHtml(latestChat.text)}」 — ${escapeHtml(
-                       userById(latestChat.userId).shortName
-                     )}</p>`
-                   : ""
-               }
              </div>`
           : ""
       }
