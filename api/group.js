@@ -199,8 +199,23 @@ function mergeSnapshots(existing, incoming) {
   (incoming.likes || []).forEach((l) => upsertById(likes, l));
   const talkReacts = (existing.talkReacts || []).slice();
   (incoming.talkReacts || []).forEach((r) => upsertById(talkReacts, r));
+  const messages = (existing.messages || []).slice();
+  (incoming.messages || []).forEach((m) => upsertById(messages, m));
+  messages.sort((a, b) => (a && a.at ? a.at : 0) - (b && b.at ? b.at : 0));
+  const trimmedMessages = messages.length > 300 ? messages.slice(-300) : messages;
   const bomb = mergeBomb(existing && existing.bomb, incoming && incoming.bomb);
-  return { group, users, memberships, quests, guesses, comments, likes, talkReacts, bomb };
+  return {
+    group,
+    users,
+    memberships,
+    quests,
+    guesses,
+    comments,
+    likes,
+    talkReacts,
+    messages: trimmedMessages,
+    bomb,
+  };
 }
 
 function parseGroup(data) {

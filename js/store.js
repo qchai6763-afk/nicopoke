@@ -394,6 +394,7 @@ function snapshotForGroup(groupId) {
     comments: state.comments.filter((c) => questIds.has(c.questId)),
     likes: (state.likes || []).filter((l) => questIds.has(l.questId)),
     talkReacts: (state.talkReacts || []).filter((r) => questIds.has(r.questId)),
+    messages: (state.messages || []).filter((m) => m.groupId === groupId),
     bomb: state.bomb && state.bomb.groupId === groupId ? state.bomb : null,
   };
 }
@@ -588,6 +589,7 @@ function groupSyncStamp(groupId) {
     comments: snap.comments || [],
     likes: snap.likes || [],
     talkReacts: snap.talkReacts || [],
+    messages: (snap.messages || []).map((m) => [m.id, m.userId, m.text, m.at]),
     bomb: snap.bomb || null,
   });
 }
@@ -629,6 +631,8 @@ function mergeSnapshot(snap) {
   (snap.likes || []).forEach((l) => upsertById(state.likes, l));
   if (!state.talkReacts) state.talkReacts = [];
   (snap.talkReacts || []).forEach((r) => upsertById(state.talkReacts, r));
+  if (!state.messages) state.messages = [];
+  (snap.messages || []).forEach((m) => upsertById(state.messages, m));
   if (snap.bomb) state.bomb = mergeBomb(state.bomb, snap.bomb);
   const after = groupSyncStamp(incoming.id);
   return before !== after;
@@ -651,6 +655,7 @@ function toLightSnapshot(snap) {
     comments: snap.comments || [],
     likes: snap.likes || [],
     talkReacts: snap.talkReacts || [],
+    messages: snap.messages || [],
     bomb: snap.bomb || null,
   };
 }
@@ -877,10 +882,31 @@ function addMemberToCurrentGroup({ name }) {
   return { ok: true, user };
 }
 
+function themeNeedsAssign(quest) {
+  if (!quest || !quest.theme) return true;
+  if (quest.category === "hold" || quest.category === "mono") return true;
+  return !THEMES.includes(quest.theme);
+}
+
 function ensureTodayQuests(groupId) {
   const date = todayKey();
   const members = groupMembers(groupId);
-  const fields = holdFields(date);
+  const taken = [];
+  members.forEach((member) => {
+    const exists = state.quests.find(
+      (q) => q.groupId === groupId && q.userId === member.id && q.date === date && !q.bonus
+    );
+    if (exists && !themeNeedsAssign(exists) && exists.theme) taken.push(exists.theme);
+  });
+  const needIds = members
+    .filter((member) => {
+      const exists = state.quests.find(
+        (q) => q.groupId === groupId && q.userId === member.id && q.date === date && !q.bonus
+      );
+      return !exists || (!isPosted(exists) && themeNeedsAssign(exists));
+    })
+    .map((m) => m.id);
+  const assigned = themesForMembers(needIds, date, taken);
   let changed = false;
   members.forEach((member) => {
     const exists = state.quests.find(
@@ -901,12 +927,19 @@ function ensureTodayQuests(groupId) {
             revealed: false,
             postedAt: null,
           },
-          fields
+          themeFields(assigned[member.id])
         )
       );
       changed = true;
-    } else if (!isPosted(exists) && exists.theme !== fields.theme) {
-      Object.assign(exists, fields, { themeAt: Date.now() });
+    } else if (!isPosted(exists) && themeNeedsAssign(exists) && assigned[member.id]) {
+      Object.assign(exists, themeFields(assigned[member.id]), {
+        themeAt: Date.now(),
+        mosaicMask: "",
+        secretAnswer: "",
+        secretReading: "",
+        usageHint: "",
+        nameHint: "",
+      });
       changed = true;
     }
   });
@@ -925,10 +958,6 @@ function questsForGroup(groupId) {
 
 function getQuest(id) {
   return state.quests.find((q) => q.id === id) || null;
-}
-
-function canSeeTheme(quest, viewerId) {
-  return Boolean(quest && isPosted(quest));
 }
 
 function isPosted(quest) {
@@ -1041,7 +1070,7 @@ function streakFor(userId) {
 
 function correctCount(userId) {
   const ids = new Set(
-    state.guesses.filter((g) => g.userId === userId && g.correct).map((g) => g.questId)
+    state.guesses.filter((g) => g.userId === userId && g.correct && !g.hold).map((g) => g.questId)
   );
   return ids.size;
 }
@@ -1058,53 +1087,37 @@ function streakAtRisk(userId) {
   return dates.has(yest) && !dates.has(today);
 }
 
-function holdGuessesFor(questId, userId) {
-  return guessesFor(questId).filter((g) => g.userId === userId && g.hold);
+function themeGuessesFor(questId, userId) {
+  return guessesFor(questId).filter((g) => g.userId === userId && !g.hold);
 }
 
-function holdProgress(quest, userId) {
-  const list = holdGuessesFor(quest.id, userId);
+function themeProgress(quest, userId) {
+  const list = themeGuessesFor(quest.id, userId);
   const wrong = list.filter((g) => !g.correct && !g.reveal).length;
   const solved = list.some((g) => g.correct);
   const revealed = list.some((g) => g.reveal);
   const over = solved || revealed;
-  const stage = over ? 3 : Math.min(2, wrong);
-  return { wrong, solved, revealed, over, stage };
+  return { wrong, solved, revealed, over };
 }
 
-function submitHoldGuess(questId, text) {
-  const user = currentUser();
-  const quest = getQuest(questId);
-  const guessText = String(text || "").trim().slice(0, 30);
-  if (!user || !quest || !quest.secretAnswer || !guessText || !isPosted(quest) || quest.userId === user.id) return null;
-  const progress = holdProgress(quest, user.id);
-  if (progress.over) return null;
-  const guess = {
-    id: makeId("guess"),
-    questId,
-    userId: user.id,
-    text: guessText,
-    hold: true,
-    correct: holdGuessOk(guessText, quest.secretAnswer, quest.secretReading),
-    at: Date.now(),
-  };
-  state.guesses.push(guess);
-  notify();
-  return guess;
+function canSeeTheme(quest, viewerId) {
+  if (!quest) return false;
+  if (quest.userId === viewerId) return true;
+  if (!isPosted(quest)) return false;
+  return themeProgress(quest, viewerId).over;
 }
 
-function revealHoldAnswer(questId) {
+function revealThemeAnswer(questId) {
   const user = currentUser();
   const quest = getQuest(questId);
-  if (!user || !quest || !quest.secretAnswer || quest.userId === user.id) return;
-  const progress = holdProgress(quest, user.id);
+  if (!user || !quest || !isPosted(quest) || quest.userId === user.id) return;
+  const progress = themeProgress(quest, user.id);
   if (progress.over) return;
   state.guesses.push({
     id: makeId("guess"),
     questId,
     userId: user.id,
     text: "",
-    hold: true,
     correct: false,
     reveal: true,
     at: Date.now(),
@@ -1112,26 +1125,17 @@ function revealHoldAnswer(questId) {
   notify();
 }
 
-function giveUpHold(questId) {
-  revealHoldAnswer(questId);
-}
-
-function postPhoto(questId, { photoDataUrl, caption, mosaicMask, secretAnswer, secretReading, usageHint }) {
+function postPhoto(questId, { photoDataUrl, caption }) {
   const quest = getQuest(questId);
-  if (!quest) return;
+  if (!quest || !photoDataUrl) return;
   const before = streakFor(quest.userId);
-  const secret = String(secretAnswer || "").trim();
-  const reading = String(secretReading || "").trim();
   quest.photoDataUrl = photoDataUrl;
   quest.caption = String(caption || "").trim();
-  quest.mosaicMask = mosaicMask || "";
-  quest.secretAnswer = secret;
-  quest.secretReading = reading;
-  quest.usageHint = usageHint || "";
-  quest.nameHint = nameHintFrom(secret, reading);
-  if (secret) {
-    Object.assign(quest, holdFields(quest.date));
-  }
+  quest.mosaicMask = "";
+  quest.secretAnswer = "";
+  quest.secretReading = "";
+  quest.usageHint = "";
+  quest.nameHint = "";
   quest.postedAt = Math.max(Date.now(), (quest.deletedAt || 0) + 1);
   quest.revealed = false;
   const after = streakFor(quest.userId);
@@ -1315,11 +1319,11 @@ function myGuesses(questId, userId) {
 }
 
 function guessedRight(questId, userId) {
-  return myGuesses(questId, userId).some((g) => g.correct);
+  return themeGuessesFor(questId, userId).some((g) => g.correct);
 }
 
 function missCountFor(questId, userId) {
-  return myGuesses(questId, userId).filter((g) => !g.correct).length;
+  return themeGuessesFor(questId, userId).filter((g) => !g.correct && !g.reveal).length;
 }
 
 function themeCatOf(theme) {
@@ -1334,6 +1338,8 @@ function autoGuessHints(quest, userId) {
   const hints = [];
   if (cat && cat.id === "face") {
     hints.push("顔の写真です。表情、向き、パーツのどれかに注目してみてください。");
+  } else if (cat && cat.id === "free") {
+    hints.push("自由お題です。本人が選んだ「なにを写したか」に注目してみてください。");
   } else {
     hints.push("顔ではなく、ものや場面の写真です。何を写しているかに注目してみてください。");
   }
@@ -1347,9 +1353,10 @@ function autoGuessHints(quest, userId) {
 function submitGuess(questId, text) {
   const user = currentUser();
   const quest = getQuest(questId);
-  const guessText = String(text || "").trim().slice(0, 30);
+  const guessText = String(text || "").trim().slice(0, 40);
   if (!user || !quest || !guessText || !isPosted(quest) || quest.userId === user.id) return null;
-  if (guessedRight(questId, user.id)) return null;
+  const progress = themeProgress(quest, user.id);
+  if (progress.over) return null;
   const guess = {
     id: makeId("guess"),
     questId,
@@ -1503,6 +1510,7 @@ function ensureBonusQuest(groupId, userId) {
   const date = todayKey();
   const questId = `q-${userId}-${date}-b`;
   if (state.quests.some((q) => q.id === questId)) return;
+  const taken = state.quests.filter((q) => q.groupId === groupId && q.date === date && q.theme).map((q) => q.theme);
   state.quests.push(
     Object.assign(
       {
@@ -1518,7 +1526,7 @@ function ensureBonusQuest(groupId, userId) {
         revealed: false,
         postedAt: null,
       },
-      holdFields(date)
+      themeFields(pickSlot(taken[0] || "").theme)
     )
   );
 }
@@ -1577,9 +1585,36 @@ function todayBoard(groupId) {
       quest: q,
       user: userById(q.userId),
       likes: likeCount(q.id),
-      comments: commentsFor(q.id),
     }))
-    .sort((a, b) => b.likes - a.likes || b.comments.length - a.comments.length);
+    .sort((a, b) => b.likes - a.likes || (b.quest.postedAt || 0) - (a.quest.postedAt || 0));
+}
+
+function messagesForGroup(groupId) {
+  return (state.messages || [])
+    .filter((m) => m && m.groupId === groupId && m.text)
+    .slice()
+    .sort((a, b) => (a.at || 0) - (b.at || 0));
+}
+
+function sendGroupMessage(text) {
+  const user = currentUser();
+  const group = currentGroup();
+  const body = String(text || "").trim().slice(0, 120);
+  if (!user || !group || !body) return null;
+  if (!state.messages) state.messages = [];
+  const row = {
+    id: makeId("msg"),
+    groupId: group.id,
+    userId: user.id,
+    text: body,
+    at: Date.now(),
+  };
+  state.messages.push(row);
+  if (state.messages.length > 300) {
+    state.messages = state.messages.slice(-300);
+  }
+  notify();
+  return row;
 }
 
 function likesReceived(userId) {
