@@ -78,26 +78,38 @@ function themeFields(theme) {
   };
 }
 
-function themesForMembers(memberIds, date, taken) {
+function themesForMembers(memberIds, date, taken, avoidByUser) {
   const used = new Set(taken || []);
   const out = {};
   memberIds
     .slice()
     .sort()
     .forEach((id) => {
+      const avoid = new Set((avoidByUser && avoidByUser[id]) || []);
       const start = hashString(`${id}:${date}:own-theme`) % THEMES.length;
-      let theme = THEMES[start];
+      let theme = null;
+      let soft = null;
       for (let i = 0; i < THEMES.length; i += 1) {
         const candidate = THEMES[(start + i) % THEMES.length];
-        if (!used.has(candidate)) {
-          theme = candidate;
-          break;
-        }
+        if (used.has(candidate)) continue;
+        if (!soft) soft = candidate;
+        if (avoid.has(candidate)) continue;
+        theme = candidate;
+        break;
       }
+      theme = theme || soft || THEMES[start];
       used.add(theme);
       out[id] = theme;
     });
   return out;
+}
+
+function yesterdayThemeFor(userId, groupId, date) {
+  const yest = addDaysKey(date, -1);
+  const quest = state.quests.find(
+    (q) => q.groupId === groupId && q.userId === userId && q.date === yest && !q.bonus && q.theme
+  );
+  return quest && quest.theme ? quest.theme : "";
 }
 
 function groupThemeSlot(groupId, dateKey) {
@@ -896,17 +908,26 @@ function ensureTodayQuests(groupId) {
     const exists = state.quests.find(
       (q) => q.groupId === groupId && q.userId === member.id && q.date === date && !q.bonus
     );
-    if (exists && !themeNeedsAssign(exists) && exists.theme) taken.push(exists.theme);
+    const yTheme = yesterdayThemeFor(member.id, groupId, date);
+    const staleSame = exists && !isPosted(exists) && yTheme && exists.theme === yTheme;
+    if (exists && !themeNeedsAssign(exists) && !staleSame && exists.theme) taken.push(exists.theme);
   });
   const needIds = members
     .filter((member) => {
       const exists = state.quests.find(
         (q) => q.groupId === groupId && q.userId === member.id && q.date === date && !q.bonus
       );
-      return !exists || (!isPosted(exists) && themeNeedsAssign(exists));
+      const yTheme = yesterdayThemeFor(member.id, groupId, date);
+      const staleSame = exists && !isPosted(exists) && yTheme && exists.theme === yTheme;
+      return !exists || (!isPosted(exists) && (themeNeedsAssign(exists) || staleSame));
     })
     .map((m) => m.id);
-  const assigned = themesForMembers(needIds, date, taken);
+  const avoidByUser = {};
+  needIds.forEach((id) => {
+    const yTheme = yesterdayThemeFor(id, groupId, date);
+    if (yTheme) avoidByUser[id] = [yTheme];
+  });
+  const assigned = themesForMembers(needIds, date, taken, avoidByUser);
   let changed = false;
   members.forEach((member) => {
     const exists = state.quests.find(
@@ -931,16 +952,24 @@ function ensureTodayQuests(groupId) {
         )
       );
       changed = true;
-    } else if (!isPosted(exists) && themeNeedsAssign(exists) && assigned[member.id]) {
-      Object.assign(exists, themeFields(assigned[member.id]), {
-        themeAt: Date.now(),
-        mosaicMask: "",
-        secretAnswer: "",
-        secretReading: "",
-        usageHint: "",
-        nameHint: "",
-      });
-      changed = true;
+    } else if (
+      !isPosted(exists) &&
+      assigned[member.id] &&
+      (themeNeedsAssign(exists) || exists.theme !== assigned[member.id])
+    ) {
+      const yTheme = yesterdayThemeFor(member.id, groupId, date);
+      const staleSame = yTheme && exists.theme === yTheme;
+      if (themeNeedsAssign(exists) || staleSame) {
+        Object.assign(exists, themeFields(assigned[member.id]), {
+          themeAt: Date.now(),
+          mosaicMask: "",
+          secretAnswer: "",
+          secretReading: "",
+          usageHint: "",
+          nameHint: "",
+        });
+        changed = true;
+      }
     }
   });
   if (changed) persist();

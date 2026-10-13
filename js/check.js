@@ -209,7 +209,7 @@ function renderCheckIntro() {
       <ol class="intro-steps">
         <li>ことばや数字は、自分で書いて答えます。曜日はボタンで選べます。</li>
         <li>問題ごとに時間がちがいます。数字ならべと形合わせは 10 秒です。</li>
-        <li>終わると、今日の元気予報の結果とおすすめが出ます。</li>
+        <li>終わると、今日の元気予報の結果が出ます。</li>
       </ol>
       <button class="primary" type="button" data-check-go>チェックをはじめる</button>
       <button class="ghost" type="button" data-check-later>先に写真を見る</button>
@@ -357,9 +357,7 @@ function renderQMeaning(game) {
   return `
     <h1 class="theme">「${escapeHtml(q.short)}」は何の略？</h1>
     <p class="help">もとのことばを、自分で書いてください。近くても大丈夫です。</p>
-    <p class="check-hint">ヒント：${escapeHtml(q.hint)}</p>
     <input class="pill" data-lang-in maxlength="40" placeholder="もとのことば" value="${escapeHtml(game.lang || "")}" />
-    ${hintBlock(q.hint2, "もっとくわしいヒント")}
     <button class="primary" type="button" data-check-ok>これで答える</button>
   `;
 }
@@ -581,21 +579,24 @@ function renderCheckResult() {
       }</span></li>`;
     })
     .join("");
-  const note = tired.size
-    ? "少しお疲れのところを、やさしく動かすのがおすすめです。"
-    : "どれも元気そうです。今日は気分転換に、この脳トレをどうぞ。";
+  const allOk = !tired.size;
+  const recBlock = allOk
+    ? `<p class="help">どれも元気そうです。</p>
+    <a class="primary" href="#/today">今日のお題へ</a>
+    <a class="ghost" href="#/brain">脳トレ一覧</a>`
+    : `<div class="check-rec">
+      <p class="check-lab">今日のおすすめ</p>
+      <p class="theme rec-name">${escapeHtml(rec.title)}</p>
+      <p class="help">少しお疲れのところを、やさしく動かすのがおすすめです。</p>
+    </div>
+    <a class="primary" href="#/brain/${rec.id}">おすすめの脳トレへ進む</a>
+    <a class="ghost" href="#/brain">脳トレ一覧</a>`;
   renderCheckShell(`
     <p class="kicker">今日の脳の元気予報</p>
     <h1 class="theme">今日の元気予報</h1>
     <p class="help">病院の診断ではありません。今日の調子の目安です。</p>
     <ul class="check-report">${rows}</ul>
-    <div class="check-rec">
-      <p class="check-lab">今日のおすすめ</p>
-      <p class="theme rec-name">${escapeHtml(rec.title)}</p>
-      <p class="help">${escapeHtml(note)}</p>
-    </div>
-    <a class="primary" href="#/brain/${rec.id}">おすすめの脳トレへ進む</a>
-    <a class="ghost" href="#/brain">脳トレ一覧</a>
+    ${recBlock}
   `);
 }
 
