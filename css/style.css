@@ -2863,6 +2863,10 @@ a.notice.check-cta {
   font-weight: 700;
 }
 
+.guess-activity .help {
+  margin-top: 8px;
+}
+
 .privacy-list {
   margin: 0 0 12px;
   padding-left: 1.2em;

@@ -402,13 +402,20 @@ function snapshotForGroup(groupId) {
     users: state.users.filter((u) => ids.has(u.id)).map(stripUser),
     memberships: state.memberships.filter((m) => m.groupId === groupId),
     quests,
-    guesses: state.guesses.filter((g) => questIds.has(g.questId)),
+    guesses: state.guesses.filter((g) => questIds.has(g.questId)).map(sanitizeGuess),
     comments: state.comments.filter((c) => questIds.has(c.questId)),
     likes: (state.likes || []).filter((l) => questIds.has(l.questId)),
     talkReacts: (state.talkReacts || []).filter((r) => questIds.has(r.questId)),
     messages: (state.messages || []).filter((m) => m.groupId === groupId),
     bomb: state.bomb && state.bomb.groupId === groupId ? state.bomb : null,
   };
+}
+
+function sanitizeGuess(guess) {
+  if (!guess || !guess.id) return guess;
+  if (!guess.correct) return guess;
+  if (!guess.text) return guess;
+  return Object.assign({}, guess, { text: "" });
 }
 
 function upsertById(list, item) {
@@ -637,7 +644,7 @@ function mergeSnapshot(snap) {
     if (i < 0) state.quests.push(q);
     else state.quests[i] = mergeQuest(state.quests[i], q);
   });
-  (snap.guesses || []).forEach((g) => upsertById(state.guesses, g));
+  (snap.guesses || []).forEach((g) => upsertById(state.guesses, sanitizeGuess(g)));
   (snap.comments || []).forEach((c) => upsertById(state.comments, c));
   if (!state.likes) state.likes = [];
   (snap.likes || []).forEach((l) => upsertById(state.likes, l));
@@ -1379,6 +1386,23 @@ function autoGuessHints(quest, userId) {
   return hints;
 }
 
+function sharedWrongGuesses(questId) {
+  return guessesFor(questId).filter(
+    (g) => !g.correct && !g.reveal && String(g.text || "").trim()
+  );
+}
+
+function themeSolvers(questId) {
+  const seen = new Set();
+  const out = [];
+  guessesFor(questId).forEach((g) => {
+    if (!g.correct || seen.has(g.userId)) return;
+    seen.add(g.userId);
+    out.push(g);
+  });
+  return out;
+}
+
 function submitGuess(questId, text) {
   const user = currentUser();
   const quest = getQuest(questId);
@@ -1386,12 +1410,14 @@ function submitGuess(questId, text) {
   if (!user || !quest || !guessText || !isPosted(quest) || quest.userId === user.id) return null;
   const progress = themeProgress(quest, user.id);
   if (progress.over) return null;
+  const correct = guessIsClose(guessText, quest.theme);
   const guess = {
     id: makeId("guess"),
     questId,
     userId: user.id,
-    text: guessText,
-    correct: guessIsClose(guessText, quest.theme),
+    // 当たりの本文は共有しない（はずれだけ見える）
+    text: correct ? "" : guessText,
+    correct,
     at: Date.now(),
   };
   state.guesses.push(guess);

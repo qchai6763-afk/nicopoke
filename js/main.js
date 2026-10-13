@@ -425,6 +425,7 @@ function privacyListHtml() {
   return `
     <ul class="privacy-list">
       <li>写真・一言・名前・いいねは、グループの共有サーバーに保存されます。参加コードを知っている人は、これらを見られます。</li>
+      <li>お題当ての「はずれ」で書いた言葉も共有されます。当たりの答えの文字は共有しません。</li>
       <li>脳トレの記録と元気予報の結果は、このスマホの中だけに残ります。家族には送られません。</li>
       <li>写真に自分以外の人が写るときは、送る前にその人に聞いてください。</li>
       <li>送った写真は、日がたってもアルバムに残り、「思い出神経衰弱」のカードとしてグループのみんなに表示されます。</li>
@@ -624,12 +625,6 @@ function renderToday() {
       }
       ${editor}
       ${stage}
-      ${
-        editingPhoto
-          ? ""
-          : `<button type="button" class="ghost" data-enable-push>通知を受け取る</button>
-      <p class="help">${escapeHtml(window.__pushMsg || "iPhoneは「ホーム画面に追加」すると、アプリを閉じていても写真の通知が届きます。")}</p>`
-      }
     `,
     "today"
   );
@@ -656,7 +651,30 @@ function renderToday() {
     clearPhotoDraft();
     render();
   });
-  app.querySelector("[data-enable-push]")?.addEventListener("click", () => enablePush());
+}
+
+function guessActivityHtml(quest) {
+  if (!isPosted(quest)) return "";
+  const wrongs = sharedWrongGuesses(quest.id);
+  const solvers = themeSolvers(quest.id);
+  if (!wrongs.length && !solvers.length) return "";
+  const wrongLines = wrongs
+    .map((g) => {
+      const u = userById(g.userId);
+      return `<li><b>${escapeHtml(u?.name || "メンバー")}</b>「${escapeHtml(g.text)}」 はずれ</li>`;
+    })
+    .join("");
+  const solveLines = solvers
+    .map((g) => {
+      const u = userById(g.userId);
+      return `<li class="hit"><b>${escapeHtml(u?.name || "メンバー")}</b>当たり！</li>`;
+    })
+    .join("");
+  return `<div class="choice-box guess-activity">
+      <p class="kicker">みんなの答え</p>
+      <ul class="guess-list">${wrongLines}${solveLines}</ul>
+      <p class="help">はずれの言葉だけ見えます。当たりの内容は共有しません。</p>
+    </div>`;
 }
 
 function postCard(quest, viewerId) {
@@ -721,6 +739,7 @@ function postCard(quest, viewerId) {
       ${captionLine}
       ${mine && posted ? `<p class="theme-mine">あなたの今日のお題　${escapeHtml(quest.theme)}</p>` : ""}
       ${guessUi}
+      ${posted ? guessActivityHtml(quest) : ""}
       ${
         posted
           ? `<div class="react">
@@ -1258,60 +1277,6 @@ document.addEventListener(
   },
   true
 );
-
-function vapidKeyBytes(base64) {
-  const pad = "=".repeat((4 - (base64.length % 4)) % 4);
-  const raw = atob((base64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
-  const out = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i += 1) out[i] = raw.charCodeAt(i);
-  return out;
-}
-
-async function enablePush() {
-  const group = currentGroup();
-  const user = currentUser();
-  if (!group || !user) return;
-  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent || "");
-  const standalone =
-    window.navigator.standalone || window.matchMedia("(display-mode: standalone)").matches;
-  if (ios && !standalone) {
-    window.__pushMsg = "iPhoneでは、共有ボタンから「ホーム画面に追加」して、そのアイコンから開いてから通知をオンにしてください。";
-    render();
-    return;
-  }
-  if (!window.Notification || !navigator.serviceWorker || !window.PushManager) {
-    window.__pushMsg = "この端末では、閉じてからの通知はできません。";
-    render();
-    return;
-  }
-  const perm = await Notification.requestPermission();
-  if (perm !== "granted") {
-    window.__pushMsg = "通知が許可されませんでした。";
-    render();
-    return;
-  }
-  try {
-    const reg = await navigator.serviceWorker.register("sw.js");
-    const origin = cloudOrigin();
-    const keyRes = await fetch(`${origin}/api/group?vapid=1`, { cache: "no-store" });
-    const keyData = await keyRes.json();
-    if (!keyData.publicKey) throw new Error("no key");
-    const sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: vapidKeyBytes(keyData.publicKey),
-    });
-    const code = normalizeCode(group.code);
-    await fetch(`${origin}/api/group?code=${encodeURIComponent(code)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Join-Code": code },
-      body: JSON.stringify({ action: "subscribe", userId: user.id, subscription: sub.toJSON() }),
-    });
-    window.__pushMsg = "通知をオンにしました。";
-  } catch {
-    window.__pushMsg = "通知の設定ができませんでした。通信を確かめて、もう一度押してください。";
-  }
-  render();
-}
 
 function userIsEditing() {
   if (window.__mosaicDrawing || window.__photoPreview) return true;
