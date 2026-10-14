@@ -355,12 +355,9 @@ function chrome(inner, active) {
       <header class="top">
         <div class="brand">
           <div class="mascot" aria-hidden="true"></div>
-          <div>
-            <div class="logo">にこぽけ</div>
-            <p class="family-name">${group ? escapeHtml(group.name) : "グループ"} · ${escapeHtml(
-              user.shortName
-            )}</p>
-          </div>
+          <p class="family-name">${group ? escapeHtml(group.name) : "グループ"} · ${escapeHtml(
+            user.shortName
+          )}</p>
         </div>
         <div class="top-actions">
           <div class="streak-mini ${risk ? "risk" : ""} ${n ? "on" : ""}">🔥 ${n}日</div>
