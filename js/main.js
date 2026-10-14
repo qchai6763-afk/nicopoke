@@ -708,8 +708,13 @@ function postCard(quest, viewerId) {
   const captionLine =
     posted && quest.caption ? `<p class="caption-line">一言「${escapeHtml(quest.caption)}」</p>` : "";
 
+  const disclosed = themeDisclosed(quest);
   let guessUi = "";
-  if (!mine && posted && progress) {
+  if (!mine && posted && disclosed) {
+    guessUi = `<div class="choice-box"><p class="guess-note">お題が開示されました</p><p class="fit-answer">お題：${escapeHtml(
+      quest.theme
+    )}</p></div>`;
+  } else if (!mine && posted && progress) {
     if (progress.solved) {
       guessUi = `<div class="choice-box"><p class="guess-note ok">当たり！</p></div>`;
     } else if (progress.revealed) {
@@ -762,6 +767,11 @@ function postCard(quest, viewerId) {
              ${
                mine
                  ? `<div class="owner-actions">
+                      ${
+                        disclosed
+                          ? `<p class="help">家族にお題を開示しました</p>`
+                          : `<button type="button" class="like-btn" data-disclose-theme="${quest.id}">答えを開示する</button>`
+                      }
                       <button type="button" class="like-btn danger" data-delete-post="${quest.id}">この写真を消す</button>
                     </div>`
                  : ""
@@ -806,6 +816,13 @@ function bindFeedActions() {
   app.querySelectorAll("[data-theme-reveal]").forEach((btn) => {
     btn.addEventListener("click", () => {
       revealThemeAnswer(btn.dataset.themeReveal);
+      window.__pendingSyncRender = false;
+      render();
+    });
+  });
+  app.querySelectorAll("[data-disclose-theme]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      discloseTheme(btn.dataset.discloseTheme);
       window.__pendingSyncRender = false;
       render();
     });

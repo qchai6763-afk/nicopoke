@@ -1152,11 +1152,26 @@ function themeProgress(quest, userId) {
   return { wrong, solved, revealed, over };
 }
 
+function themeDisclosed(quest) {
+  return Boolean(quest && isPosted(quest) && quest.revealed && stamp(quest.revealedAt) >= stamp(quest.postedAt));
+}
+
 function canSeeTheme(quest, viewerId) {
   if (!quest) return false;
   if (quest.userId === viewerId) return true;
   if (!isPosted(quest)) return false;
+  if (themeDisclosed(quest)) return true;
   return themeProgress(quest, viewerId).over;
+}
+
+function discloseTheme(questId) {
+  const user = currentUser();
+  const quest = getQuest(questId);
+  if (!user || !quest || !isPosted(quest) || quest.userId !== user.id) return;
+  if (themeDisclosed(quest)) return;
+  quest.revealedAt = Date.now();
+  quest.revealed = true;
+  notify();
 }
 
 function revealThemeAnswer(questId) {
