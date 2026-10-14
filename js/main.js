@@ -712,13 +712,16 @@ function postCard(quest, viewerId) {
   const captionLine =
     posted && quest.caption ? `<p class="caption-line">一言「${escapeHtml(quest.caption)}」</p>` : "";
 
-  const guessUi =
-    !mine && posted
-      ? progress.over
-        ? `<div class="choice-box"><p class="guess-note">${
-            progress.solved ? "当たり！" : "お題をみました"
-          }</p><p class="fit-answer">お題：${escapeHtml(quest.theme)}</p></div>`
-        : `<div class="choice-box">
+  let guessUi = "";
+  if (!mine && posted && progress) {
+    if (progress.solved) {
+      guessUi = `<div class="choice-box"><p class="guess-note ok">当たり！</p></div>`;
+    } else if (progress.revealed) {
+      guessUi = `<div class="choice-box"><p class="guess-note">お題をみました</p><p class="fit-answer">お題：${escapeHtml(
+        quest.theme
+      )}</p></div>`;
+    } else {
+      guessUi = `<div class="choice-box">
             <p class="kicker">このお題はなーんだ？</p>
             <p class="help">写真を見て、お題を当ててください。外してもすぐ終わりません。</p>
             ${
@@ -737,8 +740,9 @@ function postCard(quest, viewerId) {
                 ? `<button type="button" class="ghost" data-theme-reveal="${quest.id}">お題をみる</button>`
                 : ""
             }
-          </div>`
-      : "";
+          </div>`;
+    }
+  }
 
   return `
     <article class="post">
