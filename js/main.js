@@ -425,6 +425,7 @@ function privacyListHtml() {
   return `
     <ul class="privacy-list">
       <li>写真・一言・名前・いいねは、グループの共有サーバーに保存されます。参加コードを知っている人は、これらを見られます。</li>
+      <li>ほかの人のアカウントには、その人のスマホからしか入れません。</li>
       <li>お題当ての「はずれ」で書いた言葉も共有されます。当たりの答えの文字は共有しません。</li>
       <li>脳トレの記録と元気予報の結果は、このスマホの中だけに残ります。家族には送られません。</li>
       <li>写真に自分以外の人が写るときは、送る前にその人に聞いてください。</li>
@@ -446,7 +447,7 @@ function readPerson(form, prefix) {
 }
 
 function renderLogin() {
-  const users = getState().users.filter((u) => !u.left);
+  const users = localUsers();
   const err = window.__gateError || "";
   const warn = window.__gateWarn || "";
   window.__gateError = "";
@@ -462,6 +463,7 @@ function renderLogin() {
         users.length
           ? `<div class="gate-card">
              <p class="kicker">この端末のアカウント</p>
+             <p class="help">このスマホで作った／参加した人だけ入れます。ほかの人のアカウントには入れません。</p>
              <div class="people">
                ${users
                  .map(
@@ -506,7 +508,11 @@ function renderLogin() {
   `;
   app.querySelectorAll("[data-login]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      login(btn.dataset.login);
+      if (!login(btn.dataset.login)) {
+        window.__gateError = "この端末のアカウントではありません。参加コードから入り直してください。";
+        renderLogin();
+        return;
+      }
       go("/today");
     });
   });

@@ -1,5 +1,6 @@
 const KEY_BASE = "today-family-v7";
 const CLOUD_ORIGIN_KEY = "nicopoke-cloud-origin-v1";
+const LOCAL_USERS_KEY = "nicopoke-local-users-v1";
 const PUBLIC_CLOUD_ORIGIN = "https://nicopoke.vercel.app";
 
 function namespacedKey(base) {
@@ -27,6 +28,51 @@ function readNamespacedJson(base, fallback) {
 
 function writeNamespacedJson(base, value) {
   localStorage.setItem(namespacedKey(base), JSON.stringify(value));
+}
+
+function readLocalUserIdsRaw() {
+  const store = readNamespacedJson(LOCAL_USERS_KEY, null);
+  if (store && store.ready && Array.isArray(store.ids)) return store.ids.filter(Boolean);
+  return null;
+}
+
+function writeLocalUserIds(ids) {
+  writeNamespacedJson(LOCAL_USERS_KEY, {
+    ready: true,
+    ids: Array.from(new Set((ids || []).filter(Boolean))),
+  });
+}
+
+function ensureLocalUsersReady() {
+  const existing = readLocalUserIdsRaw();
+  if (existing) return existing;
+  const seeded = state && state.currentUserId ? [state.currentUserId] : [];
+  writeLocalUserIds(seeded);
+  return seeded;
+}
+
+function localUserIds() {
+  return ensureLocalUsersReady();
+}
+
+function isLocalUser(userId) {
+  return Boolean(userId) && localUserIds().includes(userId);
+}
+
+function rememberLocalUser(userId) {
+  if (!userId) return;
+  const ids = localUserIds();
+  if (ids.includes(userId)) return;
+  writeLocalUserIds(ids.concat(userId));
+}
+
+function forgetLocalUser(userId) {
+  if (!userId) return;
+  writeLocalUserIds(localUserIds().filter((id) => id !== userId));
+}
+
+function localUsers() {
+  return state.users.filter((u) => u && !u.left && isLocalUser(u.id));
 }
 
 function todayKey(date = new Date()) {
@@ -204,6 +250,11 @@ function load() {
 }
 
 let state = load();
+ensureLocalUsersReady();
+if (state.currentUserId && !isLocalUser(state.currentUserId)) {
+  state.currentUserId = null;
+  persist();
+}
 
 function persist() {
   try {
@@ -688,8 +739,10 @@ function currentUser() {
 }
 
 function login(userId) {
+  if (!isLocalUser(userId)) return false;
   state.currentUserId = userId;
   notify();
+  return true;
 }
 
 function logout() {
@@ -792,11 +845,13 @@ async function startGroup({ groupName, name }) {
   };
   state.groups.push(group);
   state.memberships.push({ userId: user.id, groupId: group.id });
+  rememberLocalUser(user.id);
   state.currentUserId = user.id;
   persist();
   notify();
   const uploaded = await pushCloud(group.id);
   if (!uploaded) {
+    forgetLocalUser(user.id);
     state.currentUserId = null;
     persist();
     notify();
@@ -833,6 +888,7 @@ async function joinWithCode({ code, name }) {
   if (!user) return { ok: false, error: "あなたの名前を入れてください" };
   state.users.push(user);
   attachToGroup(user.id, group.id);
+  rememberLocalUser(user.id);
   persist();
   const uploaded = await pushCloud(group.id);
   state.currentUserId = user.id;
@@ -856,6 +912,7 @@ function addMemberToCurrentGroup({ name }) {
   if (!user) return { ok: false, error: "名前を入れてください" };
   state.users.push(user);
   attachToGroup(user.id, group.id);
+  rememberLocalUser(user.id);
   notify();
   return { ok: true, user };
 }
@@ -1253,6 +1310,7 @@ async function leaveGroup() {
       error: "共有サーバーに届かなかったので、退出を取り消しました。通信を確かめて、もう一度試してください。",
     };
   }
+  forgetLocalUser(user.id);
   state.currentUserId = null;
   persist();
   window.dispatchEvent(new Event("hidamari-change"));
