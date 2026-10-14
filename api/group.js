@@ -133,34 +133,6 @@ function mergeQuest(local, incoming) {
   return settleQuest(pickQuest(local, incoming), local, incoming);
 }
 
-function mergeBomb(a, b) {
-  if (!a) return b && b.phase !== "clear" ? b : null;
-  if (!b) return a && a.phase !== "clear" ? a : null;
-  if (a.phase === "clear" && stamp(a.updatedAt) >= stamp(b.updatedAt)) return null;
-  if (b.phase === "clear" && stamp(b.updatedAt) >= stamp(a.updatedAt)) return null;
-  if (a.phase === "clear") return b.phase === "clear" ? null : b;
-  if (b.phase === "clear") return a;
-  if (a.id !== b.id) return stamp(b.updatedAt) >= stamp(a.updatedAt) ? b : a;
-  const newer = stamp(b.updatedAt) >= stamp(a.updatedAt) ? b : a;
-  const phases = [a.phase, b.phase];
-  let phase = "lobby";
-  if (phases.indexOf("lost") >= 0) phase = "lost";
-  else if (phases.indexOf("won") >= 0) phase = "won";
-  else if (phases.indexOf("play") >= 0) phase = "play";
-  const strikes = Math.max(a.strikes || 0, b.strikes || 0);
-  if (strikes >= 2 && phase === "play") phase = "lost";
-  const started = [a.startedAt, b.startedAt].filter((n) => n > 0);
-  return Object.assign({}, newer, {
-    defuserId: a.defuserId && b.defuserId && a.defuserId !== b.defuserId ? newer.defuserId : a.defuserId || b.defuserId || "",
-    expertId: a.expertId && b.expertId && a.expertId !== b.expertId ? newer.expertId : a.expertId || b.expertId || "",
-    wireCut: Boolean(a.wireCut || b.wireCut),
-    symbolStep: Math.max(a.symbolStep || 0, b.symbolStep || 0),
-    strikes,
-    phase,
-    startedAt: started.length ? Math.min.apply(null, started) : newer.startedAt || 0,
-  });
-}
-
 function mergeUser(local, incoming) {
   if (!local) return incoming;
   if (!incoming) return local;
@@ -203,7 +175,6 @@ function mergeSnapshots(existing, incoming) {
   (incoming.messages || []).forEach((m) => upsertById(messages, m));
   messages.sort((a, b) => (a && a.at ? a.at : 0) - (b && b.at ? b.at : 0));
   const trimmedMessages = messages.length > 300 ? messages.slice(-300) : messages;
-  const bomb = mergeBomb(existing && existing.bomb, incoming && incoming.bomb);
   return {
     group,
     users,
@@ -214,7 +185,7 @@ function mergeSnapshots(existing, incoming) {
     likes,
     talkReacts,
     messages: trimmedMessages,
-    bomb,
+    bomb: null,
   };
 }
 

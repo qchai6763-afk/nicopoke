@@ -182,6 +182,7 @@ function load() {
     delete parsed.extraGrants;
     delete parsed.rankWins;
     delete parsed.asks;
+    delete parsed.bomb;
     parsed.users.forEach((u) => {
       delete u.generation;
       delete u.role;
@@ -407,7 +408,7 @@ function snapshotForGroup(groupId) {
     likes: (state.likes || []).filter((l) => questIds.has(l.questId)),
     talkReacts: (state.talkReacts || []).filter((r) => questIds.has(r.questId)),
     messages: (state.messages || []).filter((m) => m.groupId === groupId),
-    bomb: state.bomb && state.bomb.groupId === groupId ? state.bomb : null,
+    bomb: null,
   };
 }
 
@@ -535,47 +536,6 @@ function mergeUser(local, incoming) {
   return scrubLeftUser(out);
 }
 
-function mergeBomb(a, b) {
-  if (!a) return b && b.phase !== "clear" ? b : null;
-  if (!b) return a && a.phase !== "clear" ? a : null;
-  if (a.phase === "clear" && stamp(a.updatedAt) >= stamp(b.updatedAt)) return null;
-  if (b.phase === "clear" && stamp(b.updatedAt) >= stamp(a.updatedAt)) return null;
-  if (a.phase === "clear") return b.phase === "clear" ? null : b;
-  if (b.phase === "clear") return a;
-  if (a.id !== b.id) return stamp(b.updatedAt) >= stamp(a.updatedAt) ? b : a;
-  const newer = stamp(b.updatedAt) >= stamp(a.updatedAt) ? b : a;
-  const phases = [a.phase, b.phase];
-  let phase = "lobby";
-  if (phases.indexOf("lost") >= 0) phase = "lost";
-  else if (phases.indexOf("won") >= 0) phase = "won";
-  else if (phases.indexOf("play") >= 0) phase = "play";
-  const strikes = Math.max(a.strikes || 0, b.strikes || 0);
-  if (strikes >= 2 && phase === "play") phase = "lost";
-  const started = [a.startedAt, b.startedAt].filter((n) => n > 0);
-  return Object.assign({}, newer, {
-    defuserId: a.defuserId && b.defuserId && a.defuserId !== b.defuserId ? newer.defuserId : a.defuserId || b.defuserId || "",
-    expertId: a.expertId && b.expertId && a.expertId !== b.expertId ? newer.expertId : a.expertId || b.expertId || "",
-    wireCut: Boolean(a.wireCut || b.wireCut),
-    symbolStep: Math.max(a.symbolStep || 0, b.symbolStep || 0),
-    strikes,
-    phase,
-    startedAt: started.length ? Math.min.apply(null, started) : newer.startedAt || 0,
-  });
-}
-
-function groupBomb() {
-  const group = currentGroup();
-  if (!state.bomb || !group || state.bomb.groupId !== group.id || state.bomb.phase === "clear") return null;
-  return state.bomb;
-}
-
-function setGroupBomb(bomb) {
-  const group = currentGroup();
-  if (!group) return;
-  state.bomb = bomb ? Object.assign({}, bomb, { groupId: group.id, updatedAt: Date.now() }) : { id: "none", groupId: group.id, phase: "clear", updatedAt: Date.now() };
-  notify();
-}
-
 function mediaStamp(value) {
   const text = String(value || "");
   if (!text) return "0";
@@ -609,7 +569,6 @@ function groupSyncStamp(groupId) {
     likes: snap.likes || [],
     talkReacts: snap.talkReacts || [],
     messages: (snap.messages || []).map((m) => [m.id, m.userId, m.text, m.at]),
-    bomb: snap.bomb || null,
   });
 }
 
@@ -652,7 +611,7 @@ function mergeSnapshot(snap) {
   (snap.talkReacts || []).forEach((r) => upsertById(state.talkReacts, r));
   if (!state.messages) state.messages = [];
   (snap.messages || []).forEach((m) => upsertById(state.messages, m));
-  if (snap.bomb) state.bomb = mergeBomb(state.bomb, snap.bomb);
+  delete state.bomb;
   const after = groupSyncStamp(incoming.id);
   return before !== after;
 }
@@ -675,7 +634,7 @@ function toLightSnapshot(snap) {
     likes: snap.likes || [],
     talkReacts: snap.talkReacts || [],
     messages: snap.messages || [],
-    bomb: snap.bomb || null,
+    bomb: null,
   };
 }
 
