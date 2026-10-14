@@ -1325,8 +1325,54 @@ function foldGuess(s) {
     .toLowerCase();
 }
 
+const WEAK_GUESS_WORDS = [
+  "もの",
+  "顔",
+  "がお",
+  "時",
+  "とき",
+  "今日",
+  "きょう",
+  "今",
+  "いま",
+  "最近",
+  "写真",
+  "しゃしん",
+  "だけ",
+  "アップ",
+  "あっぷ",
+  "した",
+  "してる",
+  "そうな",
+  "から",
+  "いる",
+  "ある",
+  "の",
+  "とき",
+  "食べた",
+  "たべた",
+];
+
+function isWeakGuess(guess) {
+  if (!guess) return true;
+  if (WEAK_GUESS_WORDS.includes(guess)) return true;
+  return false;
+}
+
+function themeCore(theme) {
+  let core = foldGuess(theme);
+  WEAK_GUESS_WORDS.forEach((w) => {
+    core = core.split(foldGuess(w)).join("");
+  });
+  return core;
+}
+
 function keywordScore(guess, theme) {
-  return (THEME_KEYWORDS[theme] || []).filter((k) => guess.includes(foldGuess(k))).length;
+  return (THEME_KEYWORDS[theme] || []).filter((k) => {
+    const key = foldGuess(k);
+    if (!key) return false;
+    return guess.includes(key) || key.includes(guess);
+  }).length;
 }
 
 function bigrams(s) {
@@ -1335,15 +1381,29 @@ function bigrams(s) {
   return out;
 }
 
-function looseMatch(guess, theme) {
-  if (guess.length >= 2 && (theme.includes(guess) || guess.includes(theme))) {
-    return Math.min(guess.length, theme.length) * 2 >= theme.length;
+function meaningfulPartial(guess, theme) {
+  if (!guess || !theme || isWeakGuess(guess)) return false;
+  if (theme.includes(guess) || guess.includes(theme)) {
+    if (guess.length >= 2) return true;
+    // 漢字1文字（目・鼻・口など）でもお題の中にあればOK
+    if (guess.length === 1 && /[一-龥]/.test(guess)) return true;
   }
+  const core = themeCore(theme);
+  if (core && !isWeakGuess(core)) {
+    if (core === guess) return true;
+    if (core.includes(guess) && (guess.length >= 2 || /[一-龥]/.test(guess))) return true;
+    if (guess.includes(core) && core.length >= 2) return true;
+  }
+  return false;
+}
+
+function looseMatch(guess, theme) {
+  if (meaningfulPartial(guess, theme)) return true;
   const a = bigrams(guess);
   const b = bigrams(theme);
   if (!a.length || !b.length) return false;
   const hit = a.filter((x) => b.includes(x)).length;
-  return (2 * hit) / (a.length + b.length) >= 0.5;
+  return (2 * hit) / (a.length + b.length) >= 0.45;
 }
 
 function guessIsClose(text, theme) {
@@ -1353,10 +1413,17 @@ function guessIsClose(text, theme) {
   if (guess === target) return true;
   const named = THEMES.find((t) => foldGuess(t) === guess);
   if (named && named !== theme) return false;
-  if (!THEME_KEYWORDS[theme]) return looseMatch(guess, target);
+  if (meaningfulPartial(guess, target)) return true;
   const mine = keywordScore(guess, theme);
-  if (!mine) return false;
-  return THEMES.every((t) => t === theme || keywordScore(guess, t) < mine);
+  if (mine) {
+    const bestElse = Math.max(
+      0,
+      ...THEMES.filter((t) => t !== theme).map((t) => keywordScore(guess, t))
+    );
+    if (mine > bestElse) return true;
+    if (mine === bestElse && meaningfulPartial(guess, target)) return true;
+  }
+  return looseMatch(guess, target);
 }
 
 function guessesFor(questId) {
