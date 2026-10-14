@@ -26,6 +26,10 @@ jobs:
           mkdir -p _site
           cp index.html _site/
           cp -R css js img _site/
+          # 紙印刷用（A4・画像埋め込み）
+          if [ -f present/nicopoke-a4-phone.html ]; then
+            cp present/nicopoke-a4-phone.html _site/print.html
+          fi
           touch _site/.nojekyll
 
       - name: Setup Pages
