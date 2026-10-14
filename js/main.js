@@ -421,7 +421,15 @@ function personFields(prefix, defaults = {}) {
   `;
 }
 
-function privacyListHtml() {
+function privacyListHtml(mode) {
+  if (mode === "short") {
+    return `
+    <ul class="privacy-list">
+      <li>写真・名前・いいね・はずれの答えは、参加コードを知っている家族が見られます。</li>
+      <li>脳トレの記録は、このスマホの中だけに残ります。</li>
+      <li>自分の写真は、いつでも消せます。</li>
+    </ul>`;
+  }
   return `
     <ul class="privacy-list">
       <li>写真・一言・名前・いいねは、グループの共有サーバーに保存されます。参加コードを知っている人は、これらを見られます。</li>
@@ -436,7 +444,7 @@ function privacyListHtml() {
 }
 
 function agreeFieldHtml() {
-  return `<label class="agree"><input type="checkbox" name="agree" required /> 「保存されるもの」を読んで、同意します</label>`;
+  return `<label class="agree"><input type="checkbox" name="agree" required /> 保存されるものに同意します</label>`;
 }
 
 function readPerson(form, prefix) {
@@ -480,7 +488,7 @@ function renderLogin() {
       }
       <div class="gate-card">
         <p class="kicker">保存されるもの</p>
-        ${privacyListHtml()}
+        ${privacyListHtml("short")}
       </div>
       <div class="gate-card">
         <p class="kicker">グループをつくる</p>
