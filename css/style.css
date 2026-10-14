@@ -59,15 +59,12 @@ select {
 }
 
 .top {
-  position: sticky;
-  top: 0;
-  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 16px 20px 14px;
-  background: rgba(255, 244, 240, 0.94);
+  gap: 10px;
+  padding: calc(8px + env(safe-area-inset-top, 0px)) 16px 8px;
+  background: transparent;
 }
 
 .brand {
@@ -88,10 +85,10 @@ select {
 
 .family-name {
   margin: 0;
-  color: var(--ink);
-  font-size: 0.95rem;
+  color: var(--mute);
+  font-size: 0.82rem;
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 1.2;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -113,7 +110,7 @@ select {
 }
 
 .screen {
-  padding: 16px 20px 136px;
+  padding: 8px 16px 136px;
 }
 
 .screen.play-fill {
@@ -123,7 +120,7 @@ select {
 .tabbar {
   position: fixed;
   left: 50%;
-  bottom: 16px;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   width: min(398px, calc(100% - 24px));
   border-radius: 28px;
@@ -1099,9 +1096,9 @@ a.ghost {
 .streak-mini {
   background: #fff;
   border-radius: 999px;
-  padding: 6px 10px;
+  padding: 4px 8px;
   font-weight: 700;
-  font-size: 0.85rem;
+  font-size: 0.78rem;
 }
 
 .streak-mini.on {
@@ -1414,12 +1411,12 @@ a.ghost {
 }
 
 .mascot {
-  width: 56px;
-  height: 56px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: radial-gradient(circle at 35% 30%, #fff 0 18%, #ffe07a 19% 100%);
-  border: 3px solid #fff;
-  box-shadow: 0 4px 0 #ffd166;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 0 #ffd166;
   position: relative;
   flex-shrink: 0;
 }
@@ -1428,19 +1425,19 @@ a.ghost {
 .mascot::after {
   content: "";
   position: absolute;
-  width: 8px;
-  height: 8px;
+  width: 5px;
+  height: 5px;
   background: #4a2f2f;
   border-radius: 50%;
-  top: 22px;
+  top: 14px;
 }
 
 .mascot::before {
-  left: 16px;
+  left: 10px;
 }
 
 .mascot::after {
-  right: 16px;
+  right: 10px;
 }
 
 .theme-mine {
