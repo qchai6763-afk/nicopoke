@@ -687,7 +687,6 @@ function guessActivityHtml(quest) {
   return `<div class="choice-box guess-activity">
       <p class="kicker">みんなの答え</p>
       <ul class="guess-list">${wrongLines}${solveLines}</ul>
-      <p class="help">はずれの言葉だけ見えます。当たりの内容は共有しません。</p>
     </div>`;
 }
 
@@ -722,8 +721,6 @@ function postCard(quest, viewerId) {
       )}</p></div>`;
     } else {
       guessUi = `<div class="choice-box">
-            <p class="kicker">このお題はなーんだ？</p>
-            <p class="help">写真を見て、お題を当ててください。外してもすぐ終わりません。</p>
             ${
               progress.wrong >= 1
                 ? `<p class="guess-note">おしい！もう一度どうぞ。</p>`
