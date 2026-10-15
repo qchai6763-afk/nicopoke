@@ -256,23 +256,69 @@ if (state.currentUserId && !isLocalUser(state.currentUserId)) {
   persist();
 }
 
+function questPhotoDates(quests) {
+  const dates = [
+    ...new Set(
+      (quests || [])
+        .filter((q) => q && q.photoDataUrl && q.date)
+        .map((q) => q.date)
+    ),
+  ];
+  dates.sort();
+  return dates;
+}
+
+function stripQuestPhotos(quests, dropDates) {
+  const drop = new Set(dropDates || []);
+  return (quests || []).map((q) => {
+    if (!q || !drop.has(q.date)) return q;
+    return Object.assign({}, q, {
+      photoDataUrl: "",
+      mosaicMask: "",
+      hasPhoto: Boolean(q.photoDataUrl) || Boolean(q.hasPhoto),
+    });
+  });
+}
+
+function tryStoreLocal(payload) {
+  localStorage.setItem(storageKey(), JSON.stringify(payload));
+}
+
 function persist() {
   try {
-    localStorage.setItem(storageKey(), JSON.stringify(state));
+    tryStoreLocal(state);
+    return;
   } catch {
+    /* quota */
+  }
+  // 容量不足時は古い日から順に写真だけ外す（以前は「今日以外を全部削除」だった）
+  const today = todayKey();
+  const older = questPhotoDates(state.quests).filter((d) => d !== today);
+  for (let i = 1; i <= older.length; i += 1) {
+    const slim = Object.assign({}, state, {
+      quests: stripQuestPhotos(state.quests, older.slice(0, i)),
+    });
     try {
-      const light = Object.assign({}, state, {
+      tryStoreLocal(slim);
+      return;
+    } catch {
+      /* still full */
+    }
+  }
+  try {
+    tryStoreLocal(
+      Object.assign({}, state, {
         quests: (state.quests || []).map((q) =>
           Object.assign({}, q, {
-            photoDataUrl: q.date === todayKey() ? q.photoDataUrl : "",
-            mosaicMask: q.date === todayKey() ? q.mosaicMask : "",
+            photoDataUrl: "",
+            mosaicMask: "",
+            hasPhoto: Boolean(q.photoDataUrl) || Boolean(q.hasPhoto),
           })
         ),
-      });
-      localStorage.setItem(storageKey(), JSON.stringify(light));
-    } catch {
-      /* storage full */
-    }
+      })
+    );
+  } catch {
+    /* storage full */
   }
 }
 
@@ -701,6 +747,17 @@ async function pushCloud(groupId) {
     if (result.ok) return true;
     if (result.stop) break;
     await sleep(350 * (i + 1));
+  }
+  // サイズ超過時は古い日の写真から外して再送（全写真削除の light は最終手段）
+  const today = todayKey();
+  const older = questPhotoDates(snap.quests).filter((d) => d !== today);
+  for (let i = 1; i <= older.length; i += 1) {
+    const partial = Object.assign({}, snap, {
+      quests: stripQuestPhotos(snap.quests, older.slice(0, i)),
+    });
+    const result = await putCloud(snap.group.code, partial);
+    if (result.ok) return true;
+    if (result.stop) break;
   }
   const light = await putCloud(snap.group.code, toLightSnapshot(snap));
   return Boolean(light.ok);
