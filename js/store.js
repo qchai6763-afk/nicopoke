@@ -838,20 +838,83 @@ function snapshotWithOnlyDates(snap, keepDates) {
   });
 }
 
+async function putPhotoCloud(code, questId, photoDataUrl, kind) {
+  const n = normalizeCode(code);
+  if (!n || !questId || !photoDataUrl || String(photoDataUrl).indexOf("data:") !== 0) {
+    return null;
+  }
+  const res = await requestCloudAcrossHosts(n, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Join-Code": n },
+    body: JSON.stringify({
+      action: "putPhoto",
+      group: { code: n },
+      questId,
+      kind: kind === "mask" ? "mask" : "photo",
+      photoDataUrl,
+    }),
+  });
+  if (res.ok && res.data && res.data.url) return res.data.url;
+  return null;
+}
+
+/** data:URL の写真を1枚ずつサーバーへ上げ、軽いURLに差し替える */
+async function externalizeSnapPhotos(snap) {
+  if (!snap || !snap.group) return snap;
+  const code = snap.group.code;
+  for (const q of snap.quests || []) {
+    if (!q || !q.id) continue;
+    if (q.photoDataUrl && String(q.photoDataUrl).indexOf("data:") === 0) {
+      const url = await putPhotoCloud(code, q.id, q.photoDataUrl, "photo");
+      if (url) {
+        q.photoDataUrl = url;
+        const local = state.quests.find((x) => x.id === q.id);
+        if (local) local.photoDataUrl = url;
+      }
+    }
+    if (q.mosaicMask && String(q.mosaicMask).indexOf("data:") === 0) {
+      const url = await putPhotoCloud(code, q.id, q.mosaicMask, "mask");
+      if (url) {
+        q.mosaicMask = url;
+        const local = state.quests.find((x) => x.id === q.id);
+        if (local) local.mosaicMask = url;
+      }
+    }
+  }
+  for (const u of snap.users || []) {
+    if (!u || !u.id || !u.photo || String(u.photo).indexOf("data:") !== 0) continue;
+    const url = await putPhotoCloud(code, `user-${u.id}`, u.photo, "photo");
+    if (url) {
+      u.photo = url;
+      const local = state.users.find((x) => x.id === u.id);
+      if (local) local.photo = url;
+    }
+  }
+  try {
+    persist();
+  } catch {
+    /* ignore */
+  }
+  return snap;
+}
+
 async function pushCloud(groupId) {
   const snap = snapshotForGroup(groupId);
   if (!snap) return false;
+  // 先に写真だけ1枚ずつ上げて、本体JSONを小さくする
+  await externalizeSnapPhotos(snap);
   for (let i = 0; i < 3; i += 1) {
     const result = await putCloud(snap.group.code, snap);
     if (result.ok) return true;
     if (result.stop) break;
     await sleep(350 * (i + 1));
   }
-  // 一括が大きすぎるときは「1日分ずつ」上げる（サーバー側でマージして過去写真を復元できる）
-  const dates = questPhotoDates(snap.quests).slice().reverse(); // 新しい日から
+  // まだ大きい場合は日ごとに送る
+  const dates = questPhotoDates(snap.quests).slice().reverse();
   let anyOk = false;
   for (const date of dates) {
     const partial = snapshotWithOnlyDates(snap, [date]);
+    await externalizeSnapPhotos(partial);
     const result = await putCloud(snap.group.code, partial);
     if (result.ok) {
       anyOk = true;
