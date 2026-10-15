@@ -473,17 +473,19 @@ function blobStore(token) {
       const payload = JSON.stringify(data);
       const ids = storeIdCandidates(token);
       if (!ids.length) ids.push("");
+      let last = "no attempt";
       for (const api of BLOB_APIS) {
         for (const id of ids) {
           try {
             const res = await blobRequest(api, `pathname=${encodeURIComponent(path)}`, token, id, "PUT", payload);
+            last = `${api} ${res.status} ${String(res.text || "").slice(0, 160)}`;
             if (res.ok) return true;
-          } catch {
-            /* try next */
+          } catch (err) {
+            last = `${api} ${String((err && err.message) || err)}`;
           }
         }
       }
-      return false;
+      throw new Error(`putRaw failed: ${last}`);
     },
   };
 }

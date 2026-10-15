@@ -779,18 +779,38 @@ async function forceCloudSync() {
   }
   const remote = await pullCloud(group.code);
   if (remote) mergeSnapshot(remote);
-  const uploaded = await pushCloud(group.id);
+  let uploadError = "";
+  let uploaded = false;
+  try {
+    uploaded = await pushCloud(group.id);
+  } catch (err) {
+    uploadError = String((err && err.message) || err);
+  }
   const again = await pullCloud(group.code);
   if (again) mergeSnapshot(again);
   persist();
   window.dispatchEvent(new Event("hidamari-change"));
+  const serverPhotos = again
+    ? (again.quests || []).filter((q) => q && q.photoDataUrl).length
+    : 0;
+  const localPhotos = (state.quests || []).filter(
+    (q) => q && q.groupId === group.id && q.photoDataUrl
+  ).length;
+  const members = groupMembers(group.id).length;
+  const stats = `コード ${group.code} ／ メンバー ${members}人 ／ 写真 サーバー${serverPhotos}・端末${localPhotos}`;
   if (!uploaded && !remote) {
-    return { ok: false, message: "サーバーに接続できませんでした。nicopoke.vercel.app で開いているか確かめてください。" };
+    return {
+      ok: false,
+      message: `サーバーに接続できません。必ず https://nicopoke.vercel.app で開いてください。（${stats}）`,
+    };
   }
   if (!uploaded) {
-    return { ok: false, message: "受信はできましたが、この端末の写真を送れませんでした。もう一度押してください。" };
+    return {
+      ok: false,
+      message: `受信はできましたが送信に失敗。もう一度押してください。${uploadError ? " " + uploadError : ""}（${stats}）`,
+    };
   }
-  return { ok: true, message: "同期しました。フィードを開いて確かめてください。" };
+  return { ok: true, message: `同期OK。フィードを開き直してください。（${stats}）` };
 }
 
 function toLightSnapshot(snap) {
