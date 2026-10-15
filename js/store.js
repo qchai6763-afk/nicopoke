@@ -715,17 +715,21 @@ function mergeSnapshot(snap) {
 
 function toLightSnapshot(snap) {
   if (!snap) return null;
+  const today = todayKey();
   return {
     group: snap.group,
     users: (snap.users || []).map((u) => Object.assign({}, u)),
     memberships: snap.memberships || [],
-    quests: (snap.quests || []).map((q) =>
-      Object.assign({}, q, {
+    // 今日の写真は残す（古い写真だけ外す）。全消しだと友達の投稿が届かなくなる
+    quests: (snap.quests || []).map((q) => {
+      const keepPhoto = q && q.date === today && q.photoDataUrl;
+      if (keepPhoto) return Object.assign({}, q);
+      return Object.assign({}, q, {
         photoDataUrl: "",
         mosaicMask: "",
         hasPhoto: Boolean(q.photoDataUrl) && stamp(q.postedAt) > stamp(q.deletedAt),
-      })
-    ),
+      });
+    }),
     guesses: snap.guesses || [],
     comments: snap.comments || [],
     likes: snap.likes || [],
