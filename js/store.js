@@ -394,9 +394,18 @@ function cloudUrls(code) {
   const query = code
     ? `code=${encodeURIComponent(normalizeCode(code))}`
     : "ping=1";
-  const origin = cloudOrigin();
-  if (!origin) return [];
-  return [`${origin}/api/group?${query}`];
+  const origins = [];
+  const add = (origin) => {
+    const o = String(origin || "").replace(/\/$/, "");
+    if (!o || origins.includes(o)) return;
+    origins.push(o);
+  };
+  // 必ず公式サーバーを試す（端末ごとに記憶したURLがずれないようにする）
+  add(PUBLIC_CLOUD_ORIGIN);
+  if (hasOwnCloudApi()) add(location.origin);
+  add(rememberedCloudOrigin());
+  add(cloudOrigin());
+  return origins.map((origin) => `${origin}/api/group?${query}`);
 }
 
 function parseCloudBody(text) {
@@ -669,12 +678,51 @@ function groupSyncStamp(groupId) {
   });
 }
 
+function findQuestIndex(q) {
+  if (!q) return -1;
+  let i = state.quests.findIndex((x) => x.id === q.id);
+  if (i >= 0) return i;
+  if (!q.userId || !q.date) return -1;
+  return state.quests.findIndex(
+    (x) =>
+      x.userId === q.userId &&
+      x.date === q.date &&
+      Boolean(x.bonus) === Boolean(q.bonus) &&
+      (x.groupId === q.groupId ||
+        normalizeCode((state.groups.find((g) => g.id === x.groupId) || {}).code) ===
+          normalizeCode((state.groups.find((g) => g.id === q.groupId) || {}).code) ||
+        normalizeCode((state.groups.find((g) => g.id === x.groupId) || {}).code) ===
+          normalizeCode(q.groupCode))
+  );
+}
+
+function remapGroupAliases(canonicalId, code) {
+  const n = normalizeCode(code);
+  if (!canonicalId || !n) return;
+  const aliasIds = state.groups
+    .filter((g) => g && (g.id === canonicalId || normalizeCode(g.code) === n))
+    .map((g) => g.id);
+  state.quests.forEach((q) => {
+    if (q && aliasIds.includes(q.groupId)) q.groupId = canonicalId;
+  });
+  state.memberships.forEach((m) => {
+    if (m && aliasIds.includes(m.groupId)) m.groupId = canonicalId;
+  });
+  // 同じ参加コードのグループ行は1つにまとめる
+  state.groups = state.groups.filter(
+    (g) => g.id === canonicalId || normalizeCode(g.code) !== n
+  );
+  if (!state.groups.some((g) => g.id === canonicalId)) {
+    /* keep */
+  }
+}
+
 function mergeSnapshot(snap) {
   if (!snap || !snap.group) return false;
-  const before = groupSyncStamp(snap.group.id);
   const incoming = snap.group;
   incoming.code = normalizeCode(incoming.code);
   incoming.memberIds = Array.from(new Set(incoming.memberIds || []));
+  const before = groupSyncStamp(incoming.id) || groupSyncStamp((findGroupByCode(incoming.code) || {}).id);
   const gi = state.groups.findIndex((g) => g.id === incoming.id || normalizeCode(g.code) === incoming.code);
   if (gi < 0) state.groups.push(incoming);
   else {
@@ -684,6 +732,7 @@ function mergeSnapshot(snap) {
     cur.id = incoming.id;
     cur.memberIds = Array.from(new Set((cur.memberIds || []).concat(incoming.memberIds)));
   }
+  remapGroupAliases(incoming.id, incoming.code);
   (snap.users || []).forEach((u) => {
     const clean = stripUser(u);
     const i = state.users.findIndex((x) => x.id === clean.id);
@@ -692,13 +741,20 @@ function mergeSnapshot(snap) {
   });
   (snap.memberships || []).forEach((m) => {
     if (!m || !m.userId) return;
+    const row = Object.assign({}, m, { groupId: incoming.id });
     state.memberships = state.memberships.filter((x) => x.userId !== m.userId);
-    state.memberships.push(m);
+    state.memberships.push(row);
   });
   (snap.quests || []).forEach((q) => {
-    const i = state.quests.findIndex((x) => x.id === q.id);
-    if (i < 0) state.quests.push(q);
-    else state.quests[i] = mergeQuest(state.quests[i], q);
+    const row = Object.assign({}, q, { groupId: incoming.id });
+    const i = findQuestIndex(row);
+    if (i < 0) state.quests.push(row);
+    else {
+      const merged = mergeQuest(state.quests[i], row);
+      merged.id = row.id || merged.id;
+      merged.groupId = incoming.id;
+      state.quests[i] = merged;
+    }
   });
   (snap.guesses || []).forEach((g) => upsertById(state.guesses, sanitizeGuess(g)));
   (snap.comments || []).forEach((c) => upsertById(state.comments, c));
@@ -711,6 +767,30 @@ function mergeSnapshot(snap) {
   delete state.bomb;
   const after = groupSyncStamp(incoming.id);
   return before !== after;
+}
+
+async function forceCloudSync() {
+  const group = currentGroup();
+  if (!group) return { ok: false, message: "グループがありません" };
+  try {
+    localStorage.removeItem(CLOUD_ORIGIN_KEY);
+  } catch {
+    /* ignore */
+  }
+  const remote = await pullCloud(group.code);
+  if (remote) mergeSnapshot(remote);
+  const uploaded = await pushCloud(group.id);
+  const again = await pullCloud(group.code);
+  if (again) mergeSnapshot(again);
+  persist();
+  window.dispatchEvent(new Event("hidamari-change"));
+  if (!uploaded && !remote) {
+    return { ok: false, message: "サーバーに接続できませんでした。nicopoke.vercel.app で開いているか確かめてください。" };
+  }
+  if (!uploaded) {
+    return { ok: false, message: "受信はできましたが、この端末の写真を送れませんでした。もう一度押してください。" };
+  }
+  return { ok: true, message: "同期しました。フィードを開いて確かめてください。" };
 }
 
 function toLightSnapshot(snap) {

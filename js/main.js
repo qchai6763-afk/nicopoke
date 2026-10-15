@@ -977,7 +977,8 @@ function renderMe() {
         <span class="text">参加コード</span>
         <div class="code">${escapeHtml(group.code)}</div>
         <button class="pill-btn" type="button" data-copy-code>コードをコピー</button>
-        <p class="help">このコードを伝えて、友だちも同じサイト（nicopoke.vercel.app）の「参加コードで入る」から入れてください。</p>
+        <button class="primary" type="button" data-force-sync style="margin-top:10px">サーバーと同期する</button>
+        <p class="help" data-sync-msg style="margin-top:8px">PCとスマホで写真がずれるときは、両方でこのボタンを押してください。必ず同じアドレス（nicopoke.vercel.app）で開いてください。</p>
       </div>
       <form data-add>
         <p class="kicker">この端末にメンバーを追加</p>
@@ -1049,6 +1050,21 @@ function renderMe() {
       if (btn) btn.textContent = "コピーしました";
     } catch {
       window.prompt("このコードをコピーしてください", group.code);
+    }
+  });
+  app.querySelector("[data-force-sync]")?.addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    const msg = app.querySelector("[data-sync-msg]");
+    btn.disabled = true;
+    btn.textContent = "同期中…";
+    if (msg) msg.textContent = "サーバーとやり取りしています。少し待ってください。";
+    const result = await forceCloudSync();
+    btn.disabled = false;
+    btn.textContent = "サーバーと同期する";
+    if (msg) msg.textContent = result.message;
+    if (result.ok) {
+      window.__pendingSyncRender = false;
+      render();
     }
   });
   app.querySelector("[data-add]")?.addEventListener("submit", (e) => {
