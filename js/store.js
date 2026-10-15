@@ -743,6 +743,21 @@ function sleep(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+function snapshotWithOnlyDates(snap, keepDates) {
+  const keep = new Set(keepDates || []);
+  return Object.assign({}, snap, {
+    quests: (snap.quests || []).map((q) => {
+      if (!q) return q;
+      if (keep.has(q.date)) return q;
+      return Object.assign({}, q, {
+        photoDataUrl: "",
+        mosaicMask: "",
+        hasPhoto: Boolean(q.photoDataUrl) || Boolean(q.hasPhoto),
+      });
+    }),
+  });
+}
+
 async function pushCloud(groupId) {
   const snap = snapshotForGroup(groupId);
   if (!snap) return false;
@@ -752,17 +767,19 @@ async function pushCloud(groupId) {
     if (result.stop) break;
     await sleep(350 * (i + 1));
   }
-  // サイズ超過時は古い日の写真から外して再送（全写真削除の light は最終手段）
-  const today = todayKey();
-  const older = questPhotoDates(snap.quests).filter((d) => d !== today);
-  for (let i = 1; i <= older.length; i += 1) {
-    const partial = Object.assign({}, snap, {
-      quests: stripQuestPhotos(snap.quests, older.slice(0, i)),
-    });
+  // 一括が大きすぎるときは「1日分ずつ」上げる（サーバー側でマージして過去写真を復元できる）
+  const dates = questPhotoDates(snap.quests).slice().reverse(); // 新しい日から
+  let anyOk = false;
+  for (const date of dates) {
+    const partial = snapshotWithOnlyDates(snap, [date]);
     const result = await putCloud(snap.group.code, partial);
-    if (result.ok) return true;
+    if (result.ok) {
+      anyOk = true;
+      continue;
+    }
     if (result.stop) break;
   }
+  if (anyOk) return true;
   const light = await putCloud(snap.group.code, toLightSnapshot(snap));
   return Boolean(light.ok);
 }

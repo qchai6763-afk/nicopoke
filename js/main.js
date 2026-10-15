@@ -1324,6 +1324,9 @@ boot();
 refreshFromCloud().then((changed) => {
   renderAfterSync(changed);
   paintTutorial();
+  // PCなど写真が多く残っている端末から、欠けている日をサーバーへ上げ直す
+  const group = typeof currentGroup === "function" ? currentGroup() : null;
+  if (group && typeof queueCloudSync === "function") queueCloudSync(group.id);
 });
 window.setInterval(() => {
   if (route() === "brain" || userIsEditing()) return;
