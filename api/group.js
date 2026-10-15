@@ -621,6 +621,12 @@ module.exports = async function handler(req, res) {
       return;
     }
 
+    // デバッグ: 写真なしでルーティング確認
+    if (payload && payload.action === "putPhotoProbe") {
+      send(res, 200, { ok: true, probe: true, code, hasToken: Boolean(blobToken()) });
+      return;
+    }
+
     if (req.method === "GET") {
       const fetchPhoto = url.searchParams.get("fetchPhoto");
       if (fetchPhoto) {
