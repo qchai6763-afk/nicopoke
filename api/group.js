@@ -269,85 +269,44 @@ function blobPath(key) {
   return `${PREFIX}${key}.json`;
 }
 
-function photoBlobPath(questId, kind) {
+function photoStorageKey(questId, kind) {
   const safe = String(questId || "x").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
   const k = kind === "mask" ? "mask" : "photo";
-  return `${PREFIX}photos/${safe}-${k}.jpg`;
+  return `photos/${safe}-${k}`;
 }
 
-async function blobPutBinary(pathname, buffer, contentType, token, storeId) {
-  const ids = storeIdCandidates(token);
-  if (!ids.length) ids.push(storeId || "");
-  let last = "no attempt";
-  for (const api of BLOB_APIS) {
-    for (const id of ids) {
-      try {
-        const res = await fetch(`${api}/?pathname=${encodeURIComponent(pathname)}`, {
-          method: "PUT",
-          headers: Object.assign({}, blobHeaders(token, id || storeId), {
-            "x-vercel-blob-access": "public",
-            "x-add-random-suffix": "0",
-            "x-allow-overwrite": "1",
-            "x-content-type": contentType || "image/jpeg",
-            "x-cache-control-max-age": "604800",
-          }),
-          body: buffer,
-          cache: "no-store",
-        });
-        const text = await res.text();
-        let json = null;
-        try {
-          json = JSON.parse(text);
-        } catch {
-          json = null;
-        }
-        last = `${api} ${res.status} ${text.slice(0, 120)}`;
-        if (!res.ok) continue;
-        const url = (json && (json.url || json.downloadUrl)) || "";
-        if (url) return url;
-        if (id || storeId) {
-          return `https://${id || storeId}.public.blob.vercel-storage.com/${pathname}`;
-        }
-      } catch (err) {
-        last = `${api} ${String((err && err.message) || err)}`;
-      }
-    }
-  }
-  throw new Error(`photo blob failed: ${last}`);
+function photoPublicUrl(code, questId, kind) {
+  const c = normalizeCode(code);
+  const q = encodeURIComponent(String(questId || ""));
+  const k = kind === "mask" ? "mask" : "photo";
+  return `https://nicopoke.vercel.app/api/group?code=${encodeURIComponent(c)}&fetchPhoto=${q}&kind=${k}`;
 }
 
-async function saveDataUrlPhoto(questId, dataUrl, kind) {
+async function saveDataUrlPhoto(code, questId, dataUrl, kind) {
   const text = String(dataUrl || "");
   if (!text.startsWith("data:")) return text;
-  const match = text.match(/^data:([^;]+);base64,(.+)$/);
-  if (!match) return text;
-  const contentType = match[1] || "image/jpeg";
-  const buffer = Buffer.from(match[2], "base64");
-  if (!buffer.length || buffer.length > 3.5 * 1024 * 1024) {
-    throw new Error("photo too large");
-  }
-  const token = blobToken();
-  if (!token) throw new Error("blob token missing");
-  const storeId = storeIdFromToken(token);
-  const pathname = photoBlobPath(questId, kind);
-  const url = await blobPutBinary(pathname, buffer, contentType, token, storeId);
-  return `${url}${url.includes("?") ? "&" : "?"}v=${Date.now()}`;
+  if (text.length > 5 * 1024 * 1024) throw new Error("photo too large");
+  const store = makeStore();
+  const key = photoStorageKey(questId, kind);
+  const ok = await store.putRaw(key, { photoDataUrl: text, at: Date.now() });
+  if (!ok) throw new Error("photo putRaw failed");
+  return photoPublicUrl(code, questId, kind);
 }
 
-async function externalizePhotos(data) {
+async function externalizePhotos(code, data) {
   if (!data || !Array.isArray(data.quests)) return data;
   for (const q of data.quests) {
     if (!q || !q.id) continue;
     if (q.photoDataUrl && String(q.photoDataUrl).startsWith("data:")) {
       try {
-        q.photoDataUrl = await saveDataUrlPhoto(q.id, q.photoDataUrl, "photo");
+        q.photoDataUrl = await saveDataUrlPhoto(code, q.id, q.photoDataUrl, "photo");
       } catch (err) {
         console.error("PHOTO_SAVE", q.id, err);
       }
     }
     if (q.mosaicMask && String(q.mosaicMask).startsWith("data:")) {
       try {
-        q.mosaicMask = await saveDataUrlPhoto(q.id, q.mosaicMask, "mask");
+        q.mosaicMask = await saveDataUrlPhoto(code, q.id, q.mosaicMask, "mask");
       } catch (err) {
         console.error("MASK_SAVE", q.id, err);
       }
@@ -357,7 +316,7 @@ async function externalizePhotos(data) {
     for (const u of data.users) {
       if (!u || !u.id || !u.photo || !String(u.photo).startsWith("data:")) continue;
       try {
-        u.photo = await saveDataUrlPhoto(`user-${u.id}`, u.photo, "photo");
+        u.photo = await saveDataUrlPhoto(code, `user-${u.id}`, u.photo, "photo");
       } catch (err) {
         console.error("USER_PHOTO_SAVE", u.id, err);
       }
@@ -649,16 +608,36 @@ module.exports = async function handler(req, res) {
           fail(res, 400, "NEED_PHOTO");
           return;
         }
-        const url = await saveDataUrlPhoto(questId, dataUrl, kind);
+        const url = await saveDataUrlPhoto(code, questId, dataUrl, kind);
         send(res, 200, { ok: true, stored: true, url });
       } catch (err) {
         console.error("PUT_PHOTO", err);
-        fail(res, 500, "SAVE_FAILED");
+        fail(res, 500, "SAVE_FAILED", { detail: String((err && err.message) || err) });
       }
       return;
     }
 
     if (req.method === "GET") {
+      const fetchPhoto = url.searchParams.get("fetchPhoto");
+      if (fetchPhoto) {
+        const kind = url.searchParams.get("kind") === "mask" ? "mask" : "photo";
+        const raw = await store.getRaw(photoStorageKey(fetchPhoto, kind));
+        const dataUrl = raw && raw.photoDataUrl;
+        if (!dataUrl || !String(dataUrl).startsWith("data:")) {
+          fail(res, 404, "NOT_FOUND");
+          return;
+        }
+        const match = String(dataUrl).match(/^data:([^;]+);base64,(.+)$/);
+        if (!match) {
+          fail(res, 404, "NOT_FOUND");
+          return;
+        }
+        cors(res);
+        res.setHeader("Content-Type", match[1] || "image/jpeg");
+        res.setHeader("Cache-Control", "public, max-age=86400");
+        res.status(200).send(Buffer.from(match[2], "base64"));
+        return;
+      }
       const data = parseGroup(await store.get(code));
       if (!data) {
         fail(res, 404, "NOT_FOUND");
@@ -677,7 +656,7 @@ module.exports = async function handler(req, res) {
       try {
         const existing = parseGroup(await store.get(code));
         const merged = mergeSnapshots(existing, payload);
-        await externalizePhotos(merged);
+        await externalizePhotos(code, merged);
         await store.set(code, merged);
         notifyNewPosts(store, existing, merged).catch((err) => console.error("PUSH", err));
         send(res, 200, {
