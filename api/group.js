@@ -272,7 +272,7 @@ function blobPath(key) {
 function photoStorageKey(questId, kind) {
   const safe = String(questId || "x").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
   const k = kind === "mask" ? "mask" : "photo";
-  return `photos/${safe}-${k}`;
+  return `ph-${safe}-${k}`;
 }
 
 function photoPublicUrl(code, questId, kind) {
@@ -282,14 +282,14 @@ function photoPublicUrl(code, questId, kind) {
   return `https://nicopoke.vercel.app/api/group?code=${encodeURIComponent(c)}&fetchPhoto=${q}&kind=${k}`;
 }
 
-async function saveDataUrlPhoto(code, questId, dataUrl, kind) {
+async function saveDataUrlPhoto(code, questId, dataUrl, kind, store) {
   const text = String(dataUrl || "");
   if (!text.startsWith("data:")) return text;
   if (text.length > 5 * 1024 * 1024) throw new Error("photo too large");
-  const store = makeStore();
+  const blob = store || makeStore();
   const key = photoStorageKey(questId, kind);
-  const ok = await store.putRaw(key, { photoDataUrl: text, at: Date.now() });
-  if (!ok) throw new Error("photo putRaw failed");
+  const ok = await blob.putRaw(key, { photoDataUrl: text, at: Date.now() });
+  if (!ok) throw new Error(`photo putRaw failed key=${key}`);
   return photoPublicUrl(code, questId, kind);
 }
 
@@ -324,6 +324,8 @@ async function externalizePhotos(code, data) {
   }
   return data;
 }
+
+// note: externalizePhotos keeps using saveDataUrlPhoto without store override
 
 const BLOB_APIS = ["https://blob.vercel-storage.com", "https://vercel.com/api/blob"];
 
@@ -608,8 +610,8 @@ module.exports = async function handler(req, res) {
           fail(res, 400, "NEED_PHOTO");
           return;
         }
-        const url = await saveDataUrlPhoto(code, questId, dataUrl, kind);
-        send(res, 200, { ok: true, stored: true, url });
+        const url = await saveDataUrlPhoto(code, questId, dataUrl, kind, store);
+        send(res, 200, { ok: true, stored: true, url, key: photoStorageKey(questId, kind) });
       } catch (err) {
         console.error("PUT_PHOTO", err);
         fail(res, 500, "SAVE_FAILED", { detail: String((err && err.message) || err) });
