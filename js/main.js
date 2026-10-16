@@ -621,11 +621,6 @@ function renderToday() {
     `
       ${editingPhoto ? "" : statusRow(group, user.id)}
       ${editingPhoto ? "" : riskNote}
-      ${
-        editingPhoto || todayScreen(user.id)
-          ? ""
-          : `<a class="notice check-cta" href="#/brain/check">今日の脳の元気予報をしませんか<small>診断ではありません。文字や数字を自分で入れる、やさしい6問です。</small></a>`
-      }
       ${editingPhoto ? "" : learnCtaHtml()}
       ${editingPhoto ? "" : `<div class="streak ${streak ? "pulse" : ""}">${escapeHtml(streakLabel(streak))}</div>`}
       <p class="kicker">${formatDateLabel(todayKey())}　今日の一枚</p>
@@ -1098,10 +1093,6 @@ function render() {
   }
   if (user && path === "login") {
     go("/today");
-    return;
-  }
-  if (user && path !== "brain" && path !== "learn" && !todayScreen(user.id) && !window.__deferBrainCheck) {
-    go("/brain/check");
     return;
   }
   if (path === "login") return renderLogin();
