@@ -461,7 +461,7 @@ function renderLogin() {
     <div class="gate">
       <div class="badge">にこぽけ</div>
       <h1>今日の一枚を、<br />みんなで。</h1>
-      <p>このアプリは病院・老人ホーム・認知症予防の教室などで使い方を学びます。ポイントは、グループで家族と一緒に使うということです。まず、グループの1組ごとに、お題が与えられます。そのお題ごとに、家で一枚写真を撮ります。他のメンバーに対し、写真を示して、どういうお題だったのかを当てるというゲームです。連想や記憶の呼び起こしによる、頭の活性化につながるというわけです。</p>
+      <p>このアプリは病院などで行います。ポイントは、グループで家族と一緒に使うということです。まず、グループに参加している一人ひとりに、お題が与えられます。そのお題ごとに、家で一枚写真を撮ります。他のメンバーに対し、写真を示して、どういうお題だったのかを当てるというゲームです。連想や記憶の呼び起こしによる、頭の活性化につながるというわけです。</p>
       ${err ? `<p class="gate-err">${escapeHtml(err)}</p>` : ""}
       ${warn ? `<p class="gate-warn">${escapeHtml(warn)}</p>` : ""}
       ${
@@ -621,6 +621,11 @@ function renderToday() {
     `
       ${editingPhoto ? "" : statusRow(group, user.id)}
       ${editingPhoto ? "" : riskNote}
+      ${
+        editingPhoto || todayScreen(user.id)
+          ? ""
+          : `<a class="notice check-cta" href="#/brain/check">今日の脳の元気予報をしませんか<small>診断ではありません。文字や数字を自分で入れる、やさしい6問です。</small></a>`
+      }
       ${editingPhoto ? "" : learnCtaHtml()}
       ${editingPhoto ? "" : `<div class="streak ${streak ? "pulse" : ""}">${escapeHtml(streakLabel(streak))}</div>`}
       <p class="kicker">${formatDateLabel(todayKey())}　今日の一枚</p>
@@ -1093,6 +1098,10 @@ function render() {
   }
   if (user && path === "login") {
     go("/today");
+    return;
+  }
+  if (user && path !== "brain" && path !== "learn" && !todayScreen(user.id) && !window.__deferBrainCheck) {
+    go("/brain/check");
     return;
   }
   if (path === "login") return renderLogin();
